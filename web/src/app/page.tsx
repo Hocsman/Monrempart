@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Shield, Lock, Server, Cloud, CheckCircle, ArrowRight, RefreshCw, Monitor, AlertCircle } from "lucide-react";
+import { Shield, Lock, Server, Cloud, CheckCircle, ArrowRight, RefreshCw, Monitor, AlertCircle, FileText, Clock, HardDrive } from "lucide-react";
 import { supabase } from '@/lib/supabase';
 
 // Type pour les agents
@@ -12,6 +12,22 @@ interface Agent {
   status: string;
   last_seen_at: string | null;
   created_at: string;
+}
+
+// Type pour les logs de sauvegarde
+interface BackupLog {
+  id: string;
+  status: 'pending' | 'running' | 'success' | 'failed';
+  message: string | null;
+  bytes_processed: number;
+  files_processed: number;
+  duration_seconds: number | null;
+  created_at: string;
+  completed_at: string | null;
+  agents: {
+    id: string;
+    hostname: string;
+  } | null;
 }
 
 // Composant pour afficher le statut d'un agent
@@ -55,8 +71,27 @@ function formatLastSeen(lastSeenAt: string | null): string {
   });
 }
 
+// Formater les octets en format lisible
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 octets';
+  const k = 1024;
+  const sizes = ['octets', 'Ko', 'Mo', 'Go', 'To'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Formater la durée en format lisible
+function formatDuration(seconds: number | null): string {
+  if (!seconds) return '-';
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}m ${secs}s`;
+}
+
 export default function Home() {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [logs, setLogs] = useState<BackupLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -83,12 +118,45 @@ export default function Home() {
     }
   };
 
+  // Fonction pour charger les logs
+  const loadLogs = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('backup_logs')
+        .select(`
+          id,
+          status,
+          message,
+          bytes_processed,
+          files_processed,
+          duration_seconds,
+          created_at,
+          completed_at,
+          agents (
+            id,
+            hostname
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+      setLogs((data as BackupLog[]) || []);
+    } catch (err) {
+      console.error('Erreur chargement logs:', err);
+    }
+  };
+
   // Chargement initial et rafraîchissement automatique
   useEffect(() => {
     loadAgents();
+    loadLogs();
 
     // Rafraîchissement toutes les 30 secondes
-    const interval = setInterval(loadAgents, 30000);
+    const interval = setInterval(() => {
+      loadAgents();
+      loadLogs();
+    }, 30000);
 
     return () => clearInterval(interval);
   }, []);
@@ -278,6 +346,85 @@ export default function Home() {
                 </p>
               </div>
             ) : null}
+
+            {/* Section Derniers Logs */}
+            <div className="mt-12">
+              <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                <FileText className="w-6 h-6 text-vert-emeraude" />
+                Derniers Logs de Sauvegarde
+              </h3>
+
+              {logs.length > 0 ? (
+                <div className="bg-bleu-marine rounded-xl border border-white/10 overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-bleu-marine-clair/50">
+                      <tr>
+                        <th className="text-left text-gray-400 text-xs uppercase tracking-wide px-6 py-3">Agent</th>
+                        <th className="text-left text-gray-400 text-xs uppercase tracking-wide px-6 py-3">Statut</th>
+                        <th className="text-left text-gray-400 text-xs uppercase tracking-wide px-6 py-3 hidden md:table-cell">Taille</th>
+                        <th className="text-left text-gray-400 text-xs uppercase tracking-wide px-6 py-3 hidden lg:table-cell">Durée</th>
+                        <th className="text-left text-gray-400 text-xs uppercase tracking-wide px-6 py-3">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {logs.map((log) => (
+                        <tr key={log.id} className="hover:bg-white/5 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <Monitor className="w-4 h-4 text-gray-500" />
+                              <span className="text-white font-medium">
+                                {log.agents?.hostname || 'Agent inconnu'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${log.status === 'success'
+                                ? 'bg-vert-emeraude/20 text-vert-emeraude'
+                                : log.status === 'failed'
+                                  ? 'bg-rouge-alerte/20 text-rouge-alerte'
+                                  : log.status === 'running'
+                                    ? 'bg-blue-500/20 text-blue-400'
+                                    : 'bg-gray-500/20 text-gray-400'
+                              }`}>
+                              {log.status === 'success' && <CheckCircle className="w-3 h-3" />}
+                              {log.status === 'failed' && <AlertCircle className="w-3 h-3" />}
+                              {log.status === 'success' ? 'Succès' :
+                                log.status === 'failed' ? 'Échec' :
+                                  log.status === 'running' ? 'En cours' : 'En attente'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 hidden md:table-cell">
+                            <div className="flex items-center gap-2 text-gray-300">
+                              <HardDrive className="w-4 h-4 text-gray-500" />
+                              {formatBytes(log.bytes_processed)}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 hidden lg:table-cell">
+                            <div className="flex items-center gap-2 text-gray-300">
+                              <Clock className="w-4 h-4 text-gray-500" />
+                              {formatDuration(log.duration_seconds)}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-gray-400 text-sm">
+                            {new Date(log.created_at).toLocaleString('fr-FR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="bg-bleu-marine rounded-xl border border-white/10 p-8 text-center">
+                  <FileText className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                  <p className="text-gray-400">Aucun log de sauvegarde pour le moment</p>
+                </div>
+              )}
+            </div>
           </div>
         </section>
 

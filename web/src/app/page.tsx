@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
-  Shield, Lock, Server, Cloud, CheckCircle, ArrowRight,
+  Shield, Lock, Server, CheckCircle, ArrowRight,
   Building2, Users, Zap, Database, Globe, ShieldCheck,
   ChevronRight, Play, Star
 } from 'lucide-react';

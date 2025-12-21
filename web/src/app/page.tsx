@@ -1,515 +1,479 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Shield, Lock, Server, Cloud, CheckCircle, ArrowRight, RefreshCw, Monitor, AlertCircle, FileText, Clock, HardDrive, Settings } from "lucide-react";
-import { supabase } from '@/lib/supabase';
+import { motion } from 'framer-motion';
+import {
+  Shield, Lock, Server, Cloud, CheckCircle, ArrowRight,
+  Building2, Users, Zap, Database, Globe, ShieldCheck,
+  ChevronRight, Play, Star
+} from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 
-// Type pour les agents
-interface Agent {
-  id: string;
-  hostname: string;
-  ip_address: string | null;
-  status: string;
-  last_seen_at: string | null;
-  created_at: string;
-}
+// Supabase client
+const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+  : null;
 
-// Type pour les logs de sauvegarde
-interface BackupLog {
-  id: string;
-  status: 'pending' | 'running' | 'success' | 'failed';
-  message: string | null;
-  bytes_processed: number;
-  files_processed: number;
-  duration_seconds: number | null;
-  created_at: string;
-  completed_at: string | null;
-  agents: {
-    id: string;
-    hostname: string;
-  } | null;
-}
+export default function LandingPage() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
-// Composant pour afficher le statut d'un agent
-function AgentStatusBadge({ lastSeenAt }: { lastSeenAt: string | null }) {
-  if (!lastSeenAt) {
-    return (
-      <span className="flex items-center gap-2 text-gray-400 text-sm">
-        <div className="w-2 h-2 bg-gray-500 rounded-full" />
-        Jamais vu
-      </span>
-    );
-  }
-
-  const lastSeen = new Date(lastSeenAt);
-  const now = new Date();
-  const diffMinutes = Math.floor((now.getTime() - lastSeen.getTime()) / (1000 * 60));
-
-  // Statut basé sur le temps depuis la dernière connexion
-  const isOnline = diffMinutes < 5;
-
-  return (
-    <span className={`flex items-center gap-2 text-sm ${isOnline ? 'text-vert-emeraude' : 'text-rouge-alerte'}`}>
-      <div className={`w-2 h-2 rounded-full animate-pulse ${isOnline ? 'bg-vert-emeraude' : 'bg-rouge-alerte'}`} />
-      {isOnline ? 'En ligne' : `Hors ligne (${diffMinutes}min)`}
-    </span>
-  );
-}
-
-// Formater la date de dernière connexion
-function formatLastSeen(lastSeenAt: string | null): string {
-  if (!lastSeenAt) return 'Jamais';
-
-  const date = new Date(lastSeenAt);
-  return date.toLocaleString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
-
-// Formater les octets en format lisible
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 octets';
-  const k = 1024;
-  const sizes = ['octets', 'Ko', 'Mo', 'Go', 'To'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-// Formater la durée en format lisible
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return '-';
-  if (seconds < 60) return `${seconds}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}m ${secs}s`;
-}
-
-export default function Home() {
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [logs, setLogs] = useState<BackupLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-
-  // Fonction pour charger les agents
-  const loadAgents = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('agents')
-        .select('*')
-        .order('last_seen_at', { ascending: false });
-
-      if (error) throw error;
-
-      setAgents(data || []);
-      setError(null);
-      setLastRefresh(new Date());
-    } catch (err) {
-      console.error('Erreur chargement agents:', err);
-      setError('Impossible de charger les agents. Vérifiez votre configuration Supabase.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Fonction pour charger les logs
-  const loadLogs = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('backup_logs')
-        .select(`
-          id,
-          status,
-          message,
-          bytes_processed,
-          files_processed,
-          duration_seconds,
-          created_at,
-          completed_at,
-          agents (
-            id,
-            hostname
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (error) throw error;
-      setLogs((data as BackupLog[]) || []);
-    } catch (err) {
-      console.error('Erreur chargement logs:', err);
-    }
-  };
-
-  // Chargement initial et rafraîchissement automatique
   useEffect(() => {
-    loadAgents();
-    loadLogs();
-
-    // Rafraîchissement toutes les 30 secondes
-    const interval = setInterval(() => {
-      loadAgents();
-      loadLogs();
-    }, 30000);
-
-    return () => clearInterval(interval);
+    const checkAuth = async () => {
+      if (supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        setIsLoggedIn(!!session);
+      }
+    };
+    checkAuth();
   }, []);
 
-  // Compteurs pour les statistiques
-  const onlineCount = agents.filter(a => {
-    if (!a.last_seen_at) return false;
-    const diffMinutes = (new Date().getTime() - new Date(a.last_seen_at).getTime()) / (1000 * 60);
-    return diffMinutes < 5;
-  }).length;
-
-  const offlineCount = agents.length - onlineCount;
-  const protectionRate = agents.length > 0 ? Math.round((onlineCount / agents.length) * 100) : 0;
-
   return (
-    <div className="min-h-screen bg-bleu-marine">
-      {/* Header / Navigation */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-bleu-marine/80 backdrop-blur-md border-b border-white/10">
+    <div className="min-h-screen bg-slate-950">
+      {/* Navigation */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/50">
         <nav className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Shield className="w-8 h-8 text-vert-emeraude" />
+          <Link href="/" className="flex items-center gap-3">
+            <Shield className="w-8 h-8 text-emerald-500" />
             <span className="text-xl font-bold text-white">Mon Rempart</span>
-          </div>
+          </Link>
+
           <div className="hidden md:flex items-center gap-8">
-            <a href="#agents" className="text-gray-300 hover:text-white transition-colors">
-              Agents
-            </a>
-            <a href="#fonctionnalites" className="text-gray-300 hover:text-white transition-colors">
+            <Link href="/features" className="text-slate-400 hover:text-white transition-colors">
               Fonctionnalités
-            </a>
-            <a href="#securite" className="text-gray-300 hover:text-white transition-colors">
+            </Link>
+            <Link href="/security" className="text-slate-400 hover:text-white transition-colors">
               Sécurité
-            </a>
+            </Link>
+            <Link href="/pricing" className="text-slate-400 hover:text-white transition-colors">
+              Tarifs
+            </Link>
           </div>
+
           <div className="flex items-center gap-4">
-            <Link
-              href="/download"
-              className="flex items-center gap-2 text-gray-300 hover:text-vert-emeraude transition-colors"
-            >
-              <ArrowRight className="w-4 h-4" />
-              <span className="hidden md:inline">Télécharger</span>
-            </Link>
-            <Link
-              href="/settings"
-              className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
-            >
-              <Settings className="w-4 h-4" />
-              <span className="hidden md:inline">Configuration</span>
-            </Link>
-            <button className="bg-vert-emeraude hover:bg-vert-emeraude-fonce text-white px-6 py-2 rounded-full font-medium transition-all hover:scale-105">
-              Connexion
-            </button>
+            {isLoggedIn ? (
+              <>
+                <Link href="/dashboard" className="text-slate-400 hover:text-white transition-colors">
+                  Dashboard
+                </Link>
+                <Link href="/settings" className="text-slate-400 hover:text-white transition-colors">
+                  Configuration
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/auth/login" className="text-slate-400 hover:text-white transition-colors">
+                  Connexion
+                </Link>
+                <Link
+                  href="/auth/register"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-full font-medium transition-all hover:scale-105"
+                >
+                  S&apos;inscrire
+                </Link>
+              </>
+            )}
           </div>
         </nav>
       </header>
 
       {/* Hero Section */}
-      <main className="pt-24">
-        <section className="max-w-7xl mx-auto px-6 py-16 md:py-24">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
+      <section className="relative pt-32 pb-20 overflow-hidden">
+        {/* Background gradient */}
+        <div className="absolute inset-0 bg-gradient-to-b from-emerald-950/20 via-slate-950 to-slate-950" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-emerald-500/10 rounded-full blur-[120px]" />
+
+        <div className="relative max-w-7xl mx-auto px-6">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
             {/* Texte */}
-            <div className="space-y-8">
-              <div className="inline-flex items-center gap-2 bg-vert-emeraude/10 border border-vert-emeraude/30 rounded-full px-4 py-2">
-                <CheckCircle className="w-4 h-4 text-vert-emeraude" />
-                <span className="text-vert-emeraude text-sm font-medium">
-                  Solution 100% Souveraine
-                </span>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="space-y-8"
+            >
+              <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-4 py-2">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                <span className="text-emerald-400 text-sm font-medium">Solution 100% Française</span>
               </div>
 
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight">
-                Mon Rempart
-                <span className="block text-vert-emeraude mt-2">
-                  La Citadelle de vos données
+              <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight">
+                La Citadelle<br />
+                <span className="bg-gradient-to-r from-emerald-400 to-emerald-600 bg-clip-text text-transparent">
+                  de vos données.
                 </span>
               </h1>
 
-              <p className="text-lg text-gray-300 max-w-xl leading-relaxed">
-                Sauvegarde automatique et sécurisée pour les <strong className="text-white">Mairies</strong> et{" "}
-                <strong className="text-white">TPE françaises</strong>. Vos données sont chiffrées localement et
-                stockées en France.
+              <p className="text-xl text-slate-400 max-w-xl">
+                Sauvegarde immuable et Cybersécurité souveraine pour Mairies et TPE.
+                Protégez votre structure contre les ransomwares avec une solution simple et conforme RGPD.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4">
-                <button className="group bg-vert-emeraude hover:bg-vert-emeraude-fonce text-white px-8 py-4 rounded-full font-semibold text-lg transition-all hover:scale-105 flex items-center justify-center gap-2">
-                  Démarrer gratuitement
+                <Link
+                  href="/auth/register"
+                  className="group inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all hover:scale-105 hover:shadow-lg hover:shadow-emerald-500/25"
+                >
+                  Essayer gratuitement
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </button>
-                <a href="#agents" className="border border-white/30 hover:border-white text-white px-8 py-4 rounded-full font-semibold text-lg transition-all hover:bg-white/5 text-center">
-                  Voir les agents
-                </a>
-              </div>
-            </div>
-
-            {/* Stats en temps réel */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-bleu-marine-clair p-6 rounded-2xl border border-white/10">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-vert-emeraude/20 rounded-lg flex items-center justify-center">
-                    <Monitor className="w-5 h-5 text-vert-emeraude" />
-                  </div>
-                  <span className="text-gray-400 text-sm">Agents en ligne</span>
-                </div>
-                <div className="text-4xl font-bold text-vert-emeraude">{onlineCount}</div>
+                </Link>
+                <Link
+                  href="/features"
+                  className="inline-flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all border border-slate-700"
+                >
+                  <Play className="w-5 h-5" />
+                  Voir les fonctionnalités
+                </Link>
               </div>
 
-              <div className="bg-bleu-marine-clair p-6 rounded-2xl border border-white/10">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-rouge-alerte/20 rounded-lg flex items-center justify-center">
-                    <AlertCircle className="w-5 h-5 text-rouge-alerte" />
-                  </div>
-                  <span className="text-gray-400 text-sm">Hors ligne</span>
+              {/* Stats rapides */}
+              <div className="flex items-center gap-8 pt-4">
+                <div>
+                  <div className="text-3xl font-bold text-white">99.9%</div>
+                  <div className="text-slate-500 text-sm">Disponibilité</div>
                 </div>
-                <div className="text-4xl font-bold text-rouge-alerte">{offlineCount}</div>
+                <div className="w-px h-12 bg-slate-800" />
+                <div>
+                  <div className="text-3xl font-bold text-white">AES-256</div>
+                  <div className="text-slate-500 text-sm">Chiffrement</div>
+                </div>
+                <div className="w-px h-12 bg-slate-800" />
+                <div>
+                  <div className="text-3xl font-bold text-white">🇫🇷</div>
+                  <div className="text-slate-500 text-sm">Hébergement</div>
+                </div>
               </div>
+            </motion.div>
 
-              <div className="col-span-2 bg-bleu-marine-clair p-6 rounded-2xl border border-white/10">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-gray-400">Taux de protection</span>
-                  <span className="text-2xl font-bold text-vert-emeraude">{protectionRate}%</span>
-                </div>
-                <div className="w-full bg-bleu-marine rounded-full h-3">
-                  <div
-                    className="bg-gradient-to-r from-vert-emeraude to-vert-emeraude-fonce h-3 rounded-full transition-all duration-500"
-                    style={{ width: `${protectionRate}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Section Agents en temps réel */}
-        <section id="agents" className="bg-bleu-marine-clair py-16">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h2 className="text-3xl font-bold text-white mb-2">
-                  Agents connectés
-                </h2>
-                <p className="text-gray-400">
-                  Dernière mise à jour: {lastRefresh.toLocaleTimeString('fr-FR')}
-                </p>
-              </div>
-              <button
-                onClick={loadAgents}
-                disabled={loading}
-                className="flex items-center gap-2 bg-bleu-marine px-4 py-2 rounded-lg border border-white/10 text-white hover:border-vert-emeraude/50 transition-all disabled:opacity-50"
+            {/* Shield animé */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="relative flex items-center justify-center"
+            >
+              <div
+                className="relative cursor-pointer"
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
               >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                Actualiser
-              </button>
-            </div>
+                {/* Cercles de fond */}
+                <motion.div
+                  animate={{
+                    scale: isHovered ? [1, 1.1, 1] : 1,
+                    opacity: isHovered ? [0.3, 0.5, 0.3] : 0.3
+                  }}
+                  transition={{ duration: 2, repeat: isHovered ? Infinity : 0 }}
+                  className="absolute inset-0 m-auto w-72 h-72 bg-emerald-500/20 rounded-full blur-xl"
+                />
+                <motion.div
+                  animate={{
+                    scale: isHovered ? [1, 1.2, 1] : 1,
+                    opacity: isHovered ? [0.2, 0.4, 0.2] : 0.2
+                  }}
+                  transition={{ duration: 2.5, repeat: isHovered ? Infinity : 0, delay: 0.3 }}
+                  className="absolute inset-0 m-auto w-96 h-96 bg-emerald-600/10 rounded-full blur-2xl"
+                />
 
-            {/* Message d'erreur */}
-            {error && (
-              <div className="bg-rouge-alerte/10 border border-rouge-alerte/30 rounded-xl p-4 mb-6">
-                <div className="flex items-center gap-3 text-rouge-alerte">
-                  <AlertCircle className="w-5 h-5" />
-                  <span>{error}</span>
-                </div>
-                <p className="text-gray-400 text-sm mt-2">
-                  Astuce: Copiez <code className="bg-bleu-marine px-2 py-1 rounded">env.example</code> vers <code className="bg-bleu-marine px-2 py-1 rounded">.env.local</code> et configurez vos clés Supabase.
-                </p>
-              </div>
-            )}
-
-            {/* Liste des agents */}
-            {agents.length > 0 ? (
-              <div className="grid gap-4">
-                {agents.map((agent) => (
-                  <div
-                    key={agent.id}
-                    className="bg-bleu-marine p-6 rounded-xl border border-white/10 hover:border-vert-emeraude/30 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+                {/* Shield principal */}
+                <motion.div
+                  animate={{
+                    y: isHovered ? -10 : 0,
+                    rotateY: isHovered ? 15 : 0
+                  }}
+                  transition={{ duration: 0.4 }}
+                  className="relative z-10 w-64 h-64 md:w-80 md:h-80 bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl border border-slate-700/50 flex items-center justify-center shadow-2xl"
+                >
+                  <motion.div
+                    animate={{
+                      scale: isHovered ? 1.1 : 1,
+                      filter: isHovered ? 'drop-shadow(0 0 30px rgba(16, 185, 129, 0.6))' : 'drop-shadow(0 0 0px rgba(16, 185, 129, 0))'
+                    }}
+                    transition={{ duration: 0.3 }}
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-bleu-marine-clair rounded-xl flex items-center justify-center">
-                        <Monitor className="w-6 h-6 text-vert-emeraude" />
-                      </div>
-                      <div>
-                        <h3 className="text-white font-semibold text-lg">{agent.hostname}</h3>
-                        {agent.ip_address && (
-                          <p className="text-gray-500 text-sm">{agent.ip_address}</p>
-                        )}
-                      </div>
-                    </div>
+                    <Shield className="w-32 h-32 md:w-40 md:h-40 text-emerald-500" />
+                  </motion.div>
 
-                    <div className="flex items-center gap-8">
-                      <div className="text-right">
-                        <p className="text-gray-500 text-xs uppercase tracking-wide">Dernière connexion</p>
-                        <p className="text-gray-300 text-sm">{formatLastSeen(agent.last_seen_at)}</p>
-                      </div>
-                      <AgentStatusBadge lastSeenAt={agent.last_seen_at} />
-                    </div>
-                  </div>
-                ))}
+                  {/* Particules */}
+                  {isHovered && (
+                    <>
+                      <motion.div
+                        initial={{ opacity: 0, y: 0 }}
+                        animate={{ opacity: [0, 1, 0], y: -50 }}
+                        transition={{ duration: 1, repeat: Infinity }}
+                        className="absolute top-1/3 left-1/4 w-2 h-2 bg-emerald-400 rounded-full"
+                      />
+                      <motion.div
+                        initial={{ opacity: 0, y: 0 }}
+                        animate={{ opacity: [0, 1, 0], y: -40 }}
+                        transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }}
+                        className="absolute top-1/2 right-1/4 w-1.5 h-1.5 bg-emerald-300 rounded-full"
+                      />
+                      <motion.div
+                        initial={{ opacity: 0, y: 0 }}
+                        animate={{ opacity: [0, 1, 0], y: -60 }}
+                        transition={{ duration: 1.4, repeat: Infinity, delay: 0.4 }}
+                        className="absolute bottom-1/3 left-1/3 w-2.5 h-2.5 bg-emerald-500 rounded-full"
+                      />
+                    </>
+                  )}
+                </motion.div>
+
+                {/* Badge flottant */}
+                <motion.div
+                  animate={{ y: [0, -10, 0] }}
+                  transition={{ duration: 3, repeat: Infinity }}
+                  className="absolute -top-4 -right-4 bg-emerald-600 text-white px-4 py-2 rounded-full text-sm font-semibold shadow-lg"
+                >
+                  ✓ Protégé
+                </motion.div>
               </div>
-            ) : !loading && !error ? (
-              <div className="bg-bleu-marine rounded-xl border border-white/10 p-12 text-center">
-                <Server className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">Aucun agent connecté</h3>
-                <p className="text-gray-400 max-w-md mx-auto">
-                  Installez l&apos;agent Mon Rempart sur vos postes de travail pour les voir apparaître ici.
-                </p>
-              </div>
-            ) : null}
+            </motion.div>
+          </div>
+        </div>
+      </section>
 
-            {/* Section Derniers Logs */}
-            <div className="mt-12">
-              <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                <FileText className="w-6 h-6 text-vert-emeraude" />
-                Derniers Logs de Sauvegarde
-              </h3>
-
-              {logs.length > 0 ? (
-                <div className="bg-bleu-marine rounded-xl border border-white/10 overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-bleu-marine-clair/50">
-                      <tr>
-                        <th className="text-left text-gray-400 text-xs uppercase tracking-wide px-6 py-3">Agent</th>
-                        <th className="text-left text-gray-400 text-xs uppercase tracking-wide px-6 py-3">Statut</th>
-                        <th className="text-left text-gray-400 text-xs uppercase tracking-wide px-6 py-3 hidden md:table-cell">Taille</th>
-                        <th className="text-left text-gray-400 text-xs uppercase tracking-wide px-6 py-3 hidden lg:table-cell">Durée</th>
-                        <th className="text-left text-gray-400 text-xs uppercase tracking-wide px-6 py-3">Date</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {logs.map((log) => (
-                        <tr key={log.id} className="hover:bg-white/5 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <Monitor className="w-4 h-4 text-gray-500" />
-                              <span className="text-white font-medium">
-                                {log.agents?.hostname || 'Agent inconnu'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${log.status === 'success'
-                              ? 'bg-vert-emeraude/20 text-vert-emeraude'
-                              : log.status === 'failed'
-                                ? 'bg-rouge-alerte/20 text-rouge-alerte'
-                                : log.status === 'running'
-                                  ? 'bg-blue-500/20 text-blue-400'
-                                  : 'bg-gray-500/20 text-gray-400'
-                              }`}>
-                              {log.status === 'success' && <CheckCircle className="w-3 h-3" />}
-                              {log.status === 'failed' && <AlertCircle className="w-3 h-3" />}
-                              {log.status === 'success' ? 'Succès' :
-                                log.status === 'failed' ? 'Échec' :
-                                  log.status === 'running' ? 'En cours' : 'En attente'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 hidden md:table-cell">
-                            <div className="flex items-center gap-2 text-gray-300">
-                              <HardDrive className="w-4 h-4 text-gray-500" />
-                              {formatBytes(log.bytes_processed)}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 hidden lg:table-cell">
-                            <div className="flex items-center gap-2 text-gray-300">
-                              <Clock className="w-4 h-4 text-gray-500" />
-                              {formatDuration(log.duration_seconds)}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-gray-400 text-sm">
-                            {new Date(log.created_at).toLocaleString('fr-FR', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="bg-bleu-marine rounded-xl border border-white/10 p-8 text-center">
-                  <FileText className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-                  <p className="text-gray-400">Aucun log de sauvegarde pour le moment</p>
-                </div>
-              )}
+      {/* Bandeau de confiance */}
+      <section className="py-12 border-y border-slate-800/50 bg-slate-900/30">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16">
+            <div className="flex items-center gap-3">
+              <Globe className="w-6 h-6 text-emerald-500" />
+              <span className="text-slate-300 font-medium">Données hébergées en France 🇫🇷</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="w-6 h-6 text-emerald-500" />
+              <span className="text-slate-300 font-medium">Conforme RGPD</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Lock className="w-6 h-6 text-emerald-500" />
+              <span className="text-slate-300 font-medium">Chiffrement Zero-Knowledge</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Database className="w-6 h-6 text-emerald-500" />
+              <span className="text-slate-300 font-medium">Infrastructure Souveraine</span>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* Section Fonctionnalités */}
-        <section id="fonctionnalites" className="py-20">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="text-center mb-16">
+      {/* Section Pour qui */}
+      <section className="py-24">
+        <div className="max-w-7xl mx-auto px-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
+              Conçu pour les structures qui comptent
+            </h2>
+            <p className="text-xl text-slate-400 max-w-2xl mx-auto">
+              Une solution adaptée aux besoins spécifiques des collectivités et des petites entreprises françaises.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 gap-8">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 p-8 rounded-2xl border border-slate-700/50 hover:border-emerald-500/30 transition-all group"
+            >
+              <div className="w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-blue-500/20 transition-colors">
+                <Building2 className="w-8 h-8 text-blue-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-3">Mairies & Collectivités</h3>
+              <p className="text-slate-400 mb-6">
+                Protégez l&apos;état civil, les documents administratifs et les données des citoyens.
+                Conformité garantie avec les exigences de l&apos;ANSSI.
+              </p>
+              <ul className="space-y-3">
+                {['Sauvegarde automatique quotidienne', 'Récupération en cas de sinistre', 'Support prioritaire dédié'].map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-slate-300">
+                    <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 p-8 rounded-2xl border border-slate-700/50 hover:border-emerald-500/30 transition-all group"
+            >
+              <div className="w-16 h-16 bg-purple-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-purple-500/20 transition-colors">
+                <Users className="w-8 h-8 text-purple-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-3">TPE & Indépendants</h3>
+              <p className="text-slate-400 mb-6">
+                Sécurisez vos fichiers clients, comptabilité et documents essentiels.
+                Simple à installer, aucune compétence technique requise.
+              </p>
+              <ul className="space-y-3">
+                {['Installation en 5 minutes', 'Fonctionne en arrière-plan', 'Tarif accessible'].map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-slate-300">
+                    <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* Section Fonctionnalités */}
+      <section className="py-24 bg-slate-900/30">
+        <div className="max-w-7xl mx-auto px-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
+              Protection complète, simplicité absolue
+            </h2>
+            <p className="text-xl text-slate-400 max-w-2xl mx-auto">
+              Technologie de pointe rendue accessible à tous.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                icon: Lock,
+                title: 'Sauvegarde Immuable',
+                description: 'Vos données sont versionnées et protégées contre toute modification. Même un ransomware ne peut pas les altérer.',
+                color: 'emerald'
+              },
+              {
+                icon: Zap,
+                title: 'Protection Anti-Ransomware',
+                description: 'En cas d\'attaque, restaurez vos fichiers en quelques clics depuis une version saine antérieure.',
+                color: 'amber'
+              },
+              {
+                icon: Server,
+                title: 'Stockage Souverain',
+                description: 'Hébergement chez Scaleway à Paris. Vos données restent en France, sous législation européenne.',
+                color: 'blue'
+              }
+            ].map((feature, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="bg-slate-800/30 p-8 rounded-2xl border border-slate-700/50 hover:border-emerald-500/30 transition-all hover:-translate-y-1"
+              >
+                <div className={`w-14 h-14 bg-${feature.color}-500/10 rounded-xl flex items-center justify-center mb-6`}>
+                  <feature.icon className={`w-7 h-7 text-${feature.color}-500`} />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-3">{feature.title}</h3>
+                <p className="text-slate-400">{feature.description}</p>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="text-center mt-12">
+            <Link
+              href="/features"
+              className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+            >
+              Découvrir toutes les fonctionnalités
+              <ChevronRight className="w-5 h-5" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Section CTA */}
+      <section className="py-24">
+        <div className="max-w-4xl mx-auto px-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="relative bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-3xl p-12 text-center overflow-hidden"
+          >
+            <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10" />
+            <div className="relative z-10">
               <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-                Architecture Zero-Trust
+                Prêt à sécuriser votre structure ?
               </h2>
-              <p className="text-gray-400 max-w-2xl mx-auto">
-                Vos données ne passent jamais par nos serveurs. Elles sont chiffrées sur votre machine
-                et envoyées directement vers le stockage sécurisé.
+              <p className="text-emerald-100 text-lg mb-8 max-w-xl mx-auto">
+                Essayez Mon Rempart gratuitement pendant 14 jours. Aucune carte bancaire requise.
+              </p>
+              <Link
+                href="/auth/register"
+                className="inline-flex items-center gap-2 bg-white text-emerald-700 px-8 py-4 rounded-xl font-semibold text-lg transition-all hover:scale-105 hover:shadow-xl"
+              >
+                Commencer l&apos;essai gratuit
+                <ArrowRight className="w-5 h-5" />
+              </Link>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-16 border-t border-slate-800/50">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="grid md:grid-cols-4 gap-12">
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <Shield className="w-8 h-8 text-emerald-500" />
+                <span className="text-xl font-bold text-white">Mon Rempart</span>
+              </div>
+              <p className="text-slate-400 text-sm">
+                Solution souveraine de sauvegarde et cybersécurité pour les structures françaises.
               </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8">
-              <div className="bg-bleu-marine-clair p-8 rounded-2xl border border-white/10 hover:border-vert-emeraude/50 transition-all hover:-translate-y-1">
-                <div className="w-14 h-14 bg-vert-emeraude/10 rounded-xl flex items-center justify-center mb-6">
-                  <Lock className="w-7 h-7 text-vert-emeraude" />
-                </div>
-                <h3 className="text-xl font-semibold text-white mb-3">
-                  Chiffrement Local
-                </h3>
-                <p className="text-gray-400">
-                  Vos données sont chiffrées et dédupliquées directement sur votre machine avant tout transfert.
-                </p>
-              </div>
+            <div>
+              <h4 className="text-white font-semibold mb-4">Produit</h4>
+              <ul className="space-y-3 text-slate-400">
+                <li><Link href="/features" className="hover:text-white transition-colors">Fonctionnalités</Link></li>
+                <li><Link href="/security" className="hover:text-white transition-colors">Sécurité</Link></li>
+                <li><Link href="/pricing" className="hover:text-white transition-colors">Tarifs</Link></li>
+                <li><Link href="/download" className="hover:text-white transition-colors">Télécharger</Link></li>
+              </ul>
+            </div>
 
-              <div className="bg-bleu-marine-clair p-8 rounded-2xl border border-white/10 hover:border-vert-emeraude/50 transition-all hover:-translate-y-1">
-                <div className="w-14 h-14 bg-vert-emeraude/10 rounded-xl flex items-center justify-center mb-6">
-                  <Cloud className="w-7 h-7 text-vert-emeraude" />
-                </div>
-                <h3 className="text-xl font-semibold text-white mb-3">
-                  Stockage Souverain
-                </h3>
-                <p className="text-gray-400">
-                  Hébergement chez Scaleway, data centers en France. Conformité RGPD garantie.
-                </p>
-              </div>
+            <div>
+              <h4 className="text-white font-semibold mb-4">Ressources</h4>
+              <ul className="space-y-3 text-slate-400">
+                <li><Link href="/docs" className="hover:text-white transition-colors">Documentation</Link></li>
+                <li><Link href="/support" className="hover:text-white transition-colors">Support</Link></li>
+                <li><Link href="/status" className="hover:text-white transition-colors">Statut des services</Link></li>
+              </ul>
+            </div>
 
-              <div className="bg-bleu-marine-clair p-8 rounded-2xl border border-white/10 hover:border-vert-emeraude/50 transition-all hover:-translate-y-1">
-                <div className="w-14 h-14 bg-vert-emeraude/10 rounded-xl flex items-center justify-center mb-6">
-                  <Server className="w-7 h-7 text-vert-emeraude" />
-                </div>
-                <h3 className="text-xl font-semibold text-white mb-3">
-                  Direct-to-Cloud
-                </h3>
-                <p className="text-gray-400">
-                  Économisez votre bande passante. Les sauvegardes vont directement au cloud, sans intermédiaire.
-                </p>
-              </div>
+            <div>
+              <h4 className="text-white font-semibold mb-4">Légal</h4>
+              <ul className="space-y-3 text-slate-400">
+                <li><Link href="/legal/privacy" className="hover:text-white transition-colors">Confidentialité</Link></li>
+                <li><Link href="/legal/terms" className="hover:text-white transition-colors">CGU</Link></li>
+                <li><Link href="/legal/mentions" className="hover:text-white transition-colors">Mentions légales</Link></li>
+              </ul>
             </div>
           </div>
-        </section>
-      </main>
 
-      {/* Footer */}
-      <footer className="border-t border-white/10 py-12">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <Shield className="w-6 h-6 text-vert-emeraude" />
-              <span className="text-white font-semibold">Mon Rempart</span>
-            </div>
-            <p className="text-gray-500 text-sm">
-              © 2024 Mon Rempart. Solution de cybersécurité souveraine.
+          <div className="border-t border-slate-800/50 mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
+            <p className="text-slate-500 text-sm">
+              © 2024 Mon Rempart. Tous droits réservés. Hébergé en France 🇫🇷
             </p>
+            <div className="flex items-center gap-2">
+              <Star className="w-4 h-4 text-amber-400" />
+              <span className="text-slate-400 text-sm">Confiance de + de 100 structures</span>
+            </div>
           </div>
         </div>
       </footer>

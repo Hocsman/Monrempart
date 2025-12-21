@@ -41,6 +41,7 @@ yarn-error.log*
 # Go / Agent
 # -----------------------------------------------------------------------------
 # Binaires compilés
+dist/
 agent/mon-rempart-agent
 agent/mon-rempart-agent.exe
 agent/*.exe

@@ -55,6 +55,32 @@ go build -o mon-rempart-agent .
 ./mon-rempart-agent
 ```
 
+### 🔨 Compilation Cross-Platform
+
+Utilisez le Makefile pour compiler l'agent pour différentes plateformes :
+
+```bash
+# Afficher l'aide
+make help
+
+# Compiler pour Windows (créé dist/mon-rempart-agent.exe)
+make build-windows
+
+# Compiler pour Mac Apple Silicon
+make build-mac
+
+# Compiler pour Mac Intel
+make build-mac-intel
+
+# Compiler pour Linux
+make build-linux
+
+# Compiler pour toutes les plateformes
+make build-all
+```
+
+Les binaires sont créés dans le dossier `dist/`.
+
 ---
 
 ## 📁 Structure du Projet

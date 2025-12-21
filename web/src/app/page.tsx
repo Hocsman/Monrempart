@@ -194,6 +194,13 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-4">
             <Link
+              href="/download"
+              className="flex items-center gap-2 text-gray-300 hover:text-vert-emeraude transition-colors"
+            >
+              <ArrowRight className="w-4 h-4" />
+              <span className="hidden md:inline">Télécharger</span>
+            </Link>
+            <Link
               href="/settings"
               className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
             >

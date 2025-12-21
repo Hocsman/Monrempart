@@ -5,12 +5,24 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Shield, Mail, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Supabase client
-const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
-    : null;
+// Supabase client (lazy initialization)
+let supabaseInstance: SupabaseClient | null = null;
+
+function getSupabase(): SupabaseClient | null {
+    if (typeof window === 'undefined') return null;
+
+    if (!supabaseInstance) {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+        if (url && key) {
+            supabaseInstance = createClient(url, key);
+        }
+    }
+    return supabaseInstance;
+}
 
 export default function LoginPage() {
     const router = useRouter();
@@ -38,6 +50,7 @@ export default function LoginPage() {
             return;
         }
 
+        const supabase = getSupabase();
         if (!supabase) {
             setError('Configuration Supabase manquante');
             setLoading(false);
@@ -75,6 +88,7 @@ export default function LoginPage() {
             return;
         }
 
+        const supabase = getSupabase();
         if (!supabase) {
             setError('Configuration Supabase manquante');
             return;

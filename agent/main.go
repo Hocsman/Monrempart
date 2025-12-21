@@ -19,16 +19,16 @@ import (
 
 const (
 	// Version de l'agent
-	Version = "0.3"
+	Version = "0.4"
 
 	// Nom de l'application
 	AppName = "Mon Rempart Agent"
 
-	// Intervalle entre les heartbeats (en secondes)
+	// Intervalle entre les heartbeats
 	HeartbeatInterval = 60 * time.Second
 
-	// Intervalle entre les sauvegardes (pour les tests, plus court)
-	BackupInterval = 5 * time.Minute
+	// Intervalle de vérification de la config
+	ConfigCheckInterval = 60 * time.Second
 )
 
 // HeartbeatPayload représente les données envoyées au Dashboard
@@ -46,11 +46,24 @@ type HeartbeatResponse struct {
 	AgentID string `json:"agent_id,omitempty"`
 }
 
+// RemoteConfig représente la configuration reçue de l'API
+type RemoteConfig struct {
+	Success      bool   `json:"success"`
+	Configured   bool   `json:"configured"`
+	Endpoint     string `json:"endpoint,omitempty"`
+	Bucket       string `json:"bucket,omitempty"`
+	Region       string `json:"region,omitempty"`
+	AccessKey    string `json:"accessKey,omitempty"`
+	SecretKey    string `json:"secretKey,omitempty"`
+	RepoPassword string `json:"repoPassword,omitempty"`
+	Message      string `json:"message,omitempty"`
+}
+
 // LogPayload représente les données de log envoyées à l'API
 type LogPayload struct {
 	AgentID        string `json:"agent_id"`
 	Hostname       string `json:"hostname"`
-	Status         string `json:"status"` // success, failed, running
+	Status         string `json:"status"`
 	Message        string `json:"message,omitempty"`
 	BytesProcessed int64  `json:"bytes_processed"`
 	FilesProcessed int    `json:"files_processed,omitempty"`
@@ -59,9 +72,12 @@ type LogPayload struct {
 
 // Agent global state
 var (
-	agentID  string
-	hostname string
-	cfg      *config.Config
+	agentID       string
+	hostname      string
+	cfg           *config.Config
+	remoteConfig  *RemoteConfig
+	resticWrapper *backup.ResticWrapper
+	configReady   = make(chan bool, 1)
 )
 
 func main() {
@@ -71,9 +87,9 @@ func main() {
 	fmt.Printf("🛡️  Démarrage de l'agent %s v%s\n", AppName, Version)
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-	// Chargement de la configuration
+	// Chargement de la configuration locale
 	cfg = config.LoadConfig()
-	fmt.Printf("📁 Configuration chargée depuis: %s\n", cfg.ConfigPath)
+	fmt.Printf("📁 Configuration locale: %s\n", cfg.ConfigPath)
 
 	// Récupération du hostname
 	hostname, err = os.Hostname()
@@ -90,13 +106,8 @@ func main() {
 	// Premier heartbeat pour récupérer l'agent_id
 	agentID = sendHeartbeat()
 
-	// Initialisation du système de sauvegarde
-	resticWrapper := initBackupSystem()
-
-	// Lancement de la sauvegarde initiale si Restic est disponible
-	if resticWrapper != nil {
-		go runInitialBackup(resticWrapper)
-	}
+	// Récupération de la configuration distante
+	go configLoop()
 
 	// Canal pour gérer l'arrêt propre
 	stopChan := make(chan os.Signal, 1)
@@ -104,6 +115,12 @@ func main() {
 
 	// Lancement de la boucle de heartbeat
 	go heartbeatLoop()
+
+	// Attente de la configuration puis lancement de la sauvegarde
+	go func() {
+		<-configReady
+		runInitialBackup()
+	}()
 
 	fmt.Println("\n🟢 Agent prêt. Ctrl+C pour arrêter.")
 
@@ -113,29 +130,98 @@ func main() {
 	fmt.Println("👋 Agent Mon Rempart arrêté proprement.")
 }
 
-// initBackupSystem initialise le wrapper Restic
-func initBackupSystem() *backup.ResticWrapper {
-	fmt.Println("\n📦 Initialisation du système de sauvegarde...")
-
-	// Configuration Restic depuis les variables d'environnement
-	resticConfig := backup.ResticConfig{
-		S3Endpoint:      cfg.S3Endpoint,
-		S3Bucket:        cfg.S3Bucket,
-		S3Path:          hostname, // Chaque machine a son propre chemin
-		AccessKeyID:     cfg.S3AccessKey,
-		SecretAccessKey: cfg.S3SecretKey,
-		ResticPassword:  cfg.ResticPassword,
+// configLoop vérifie périodiquement la configuration distante
+func configLoop() {
+	// Première tentative immédiate
+	if fetchRemoteConfig() {
+		initBackupSystem()
+		configReady <- true
 	}
 
-	// Vérification de la configuration minimale
-	if cfg.S3Bucket == "" || cfg.S3AccessKey == "" || cfg.ResticPassword == "" {
-		fmt.Println("⚠️  Configuration S3/Restic incomplète - Mode simulation")
-		fmt.Println("   Définissez les variables d'environnement suivantes:")
-		fmt.Println("   - MONREMPART_S3_BUCKET")
-		fmt.Println("   - MONREMPART_S3_ACCESS_KEY")
-		fmt.Println("   - MONREMPART_S3_SECRET_KEY")
-		fmt.Println("   - MONREMPART_RESTIC_PASSWORD")
-		return nil
+	ticker := time.NewTicker(ConfigCheckInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		if remoteConfig == nil || !remoteConfig.Configured {
+			if fetchRemoteConfig() {
+				initBackupSystem()
+				select {
+				case configReady <- true:
+				default:
+				}
+			}
+		}
+	}
+}
+
+// fetchRemoteConfig récupère la configuration depuis l'API
+func fetchRemoteConfig() bool {
+	timestamp := time.Now().Format("15:04:05")
+
+	url := cfg.APIEndpoint + "/api/agent/config"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Printf("[%s] ❌ Erreur création requête config: %v\n", timestamp, err)
+		return false
+	}
+
+	req.Header.Set("User-Agent", fmt.Sprintf("%s/%s", AppName, Version))
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("[%s] ⚠️  Dashboard injoignable pour config: %v\n", timestamp, err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("[%s] ❌ Erreur lecture config: %v\n", timestamp, err)
+		return false
+	}
+
+	var config RemoteConfig
+	if err := json.Unmarshal(body, &config); err != nil {
+		fmt.Printf("[%s] ❌ Erreur parsing config: %v\n", timestamp, err)
+		return false
+	}
+
+	if !config.Success {
+		fmt.Printf("[%s] ⚠️  Erreur API: %s\n", timestamp, config.Message)
+		return false
+	}
+
+	if !config.Configured {
+		fmt.Printf("[%s] ⏳ En attente de configuration... (%s)\n", timestamp, config.Message)
+		fmt.Printf("[%s]    Configurez les paramètres S3 dans le Dashboard: %s/settings\n", timestamp, cfg.APIEndpoint)
+		return false
+	}
+
+	remoteConfig = &config
+	fmt.Printf("[%s] ✅ Configuration récupérée depuis le Dashboard\n", timestamp)
+	fmt.Printf("   📦 Bucket: %s\n", config.Bucket)
+	fmt.Printf("   🌍 Endpoint: %s\n", config.Endpoint)
+	return true
+}
+
+// initBackupSystem initialise le wrapper Restic avec la config distante
+func initBackupSystem() {
+	if remoteConfig == nil || !remoteConfig.Configured {
+		fmt.Println("⚠️  Configuration non disponible - sauvegarde désactivée")
+		return
+	}
+
+	fmt.Println("\n📦 Initialisation du système de sauvegarde...")
+
+	// Configuration Restic depuis la config distante
+	resticConfig := backup.ResticConfig{
+		S3Endpoint:      remoteConfig.Endpoint,
+		S3Bucket:        remoteConfig.Bucket,
+		S3Path:          hostname,
+		AccessKeyID:     remoteConfig.AccessKey,
+		SecretAccessKey: remoteConfig.SecretKey,
+		ResticPassword:  remoteConfig.RepoPassword,
 	}
 
 	// Création du wrapper
@@ -143,39 +229,43 @@ func initBackupSystem() *backup.ResticWrapper {
 	if err != nil {
 		fmt.Printf("⚠️  Restic non disponible: %v\n", err)
 		fmt.Println("   Installez Restic: https://restic.net/")
-		return nil
+		return
 	}
 
 	// Initialisation du dépôt
 	if err := wrapper.InitRepo(); err != nil {
 		fmt.Printf("❌ Échec initialisation dépôt: %v\n", err)
 		sendLog("failed", fmt.Sprintf("Échec init repo: %v", err), 0, 0, 0)
-		return nil
+		return
 	}
 
+	resticWrapper = wrapper
 	fmt.Println("✅ Système de sauvegarde prêt")
-	return wrapper
 }
 
 // runInitialBackup lance la première sauvegarde
-func runInitialBackup(wrapper *backup.ResticWrapper) {
-	// Petit délai pour laisser le temps au heartbeat de s'enregistrer
+func runInitialBackup() {
+	if resticWrapper == nil {
+		fmt.Println("⚠️  Wrapper Restic non initialisé - sauvegarde ignorée")
+		return
+	}
+
+	// Petit délai
 	time.Sleep(2 * time.Second)
 
 	fmt.Println("\n🔄 Lancement de la sauvegarde initiale...")
 
-	// Création d'un dossier de test si nécessaire
+	// Création d'un dossier de test
 	testDir := "./test_data"
 	if _, err := os.Stat(testDir); os.IsNotExist(err) {
 		os.MkdirAll(testDir, 0755)
-		// Création d'un fichier de test
 		testFile := testDir + "/test.txt"
 		os.WriteFile(testFile, []byte("Mon Rempart - Fichier de test\n"+time.Now().String()), 0644)
 		fmt.Printf("   📝 Dossier de test créé: %s\n", testDir)
 	}
 
 	// Exécution de la sauvegarde
-	result, err := wrapper.RunBackup(testDir)
+	result, err := resticWrapper.RunBackup(testDir)
 	if err != nil {
 		fmt.Printf("❌ Échec sauvegarde: %v\n", err)
 		sendLog("failed", err.Error(), 0, 0, 0)
@@ -192,7 +282,7 @@ func runInitialBackup(wrapper *backup.ResticWrapper) {
 		)
 
 		// Affichage des snapshots
-		snapshots, err := wrapper.GetSnapshots()
+		snapshots, err := resticWrapper.GetSnapshots()
 		if err == nil {
 			fmt.Printf("\n📋 Snapshots dans le dépôt: %d\n", len(snapshots))
 			for _, s := range snapshots {
@@ -202,7 +292,7 @@ func runInitialBackup(wrapper *backup.ResticWrapper) {
 	}
 }
 
-// heartbeatLoop envoie des signaux de vie au Dashboard à intervalles réguliers
+// heartbeatLoop envoie des signaux de vie
 func heartbeatLoop() {
 	ticker := time.NewTicker(HeartbeatInterval)
 	defer ticker.Stop()
@@ -253,17 +343,16 @@ func sendHeartbeat() string {
 	}
 
 	if response.Success {
-		fmt.Printf("[%s] 💓 Heartbeat OK - Commande: %s\n", timestamp, response.Command)
+		fmt.Printf("[%s] 💓 Heartbeat OK\n", timestamp)
 
-		// Mise à jour de l'agent_id si reçu
 		if response.AgentID != "" {
 			agentID = response.AgentID
 		}
 
-		// Traitement des commandes
 		switch response.Command {
 		case "backup_now":
 			fmt.Printf("[%s] 📦 Commande de sauvegarde reçue!\n", timestamp)
+			go runInitialBackup()
 		case "shutdown":
 			fmt.Printf("[%s] 🛑 Arrêt demandé par le serveur\n", timestamp)
 			os.Exit(0)

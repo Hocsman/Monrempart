@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Shield, Lock, Server, Cloud, CheckCircle, ArrowRight, RefreshCw, Monitor, AlertCircle, FileText, Clock, HardDrive } from "lucide-react";
+import Link from 'next/link';
+import { Shield, Lock, Server, Cloud, CheckCircle, ArrowRight, RefreshCw, Monitor, AlertCircle, FileText, Clock, HardDrive, Settings } from "lucide-react";
 import { supabase } from '@/lib/supabase';
 
 // Type pour les agents
@@ -191,9 +192,18 @@ export default function Home() {
               Sécurité
             </a>
           </div>
-          <button className="bg-vert-emeraude hover:bg-vert-emeraude-fonce text-white px-6 py-2 rounded-full font-medium transition-all hover:scale-105">
-            Connexion
-          </button>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/settings"
+              className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              <span className="hidden md:inline">Configuration</span>
+            </Link>
+            <button className="bg-vert-emeraude hover:bg-vert-emeraude-fonce text-white px-6 py-2 rounded-full font-medium transition-all hover:scale-105">
+              Connexion
+            </button>
+          </div>
         </nav>
       </header>
 
@@ -379,12 +389,12 @@ export default function Home() {
                           </td>
                           <td className="px-6 py-4">
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${log.status === 'success'
-                                ? 'bg-vert-emeraude/20 text-vert-emeraude'
-                                : log.status === 'failed'
-                                  ? 'bg-rouge-alerte/20 text-rouge-alerte'
-                                  : log.status === 'running'
-                                    ? 'bg-blue-500/20 text-blue-400'
-                                    : 'bg-gray-500/20 text-gray-400'
+                              ? 'bg-vert-emeraude/20 text-vert-emeraude'
+                              : log.status === 'failed'
+                                ? 'bg-rouge-alerte/20 text-rouge-alerte'
+                                : log.status === 'running'
+                                  ? 'bg-blue-500/20 text-blue-400'
+                                  : 'bg-gray-500/20 text-gray-400'
                               }`}>
                               {log.status === 'success' && <CheckCircle className="w-3 h-3" />}
                               {log.status === 'failed' && <AlertCircle className="w-3 h-3" />}

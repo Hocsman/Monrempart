@@ -80,12 +80,47 @@ COMMENT ON COLUMN backup_logs.bytes_processed IS 'Volume de données traitées e
 COMMENT ON COLUMN backup_logs.status IS 'Statut: pending, running, success, failed';
 
 -- =============================================================================
+-- Table : settings
+-- =============================================================================
+-- Configuration globale du système (une seule ligne pour le MVP).
+-- Stocke les identifiants S3/Scaleway et le mot de passe Restic.
+
+CREATE TABLE IF NOT EXISTS settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    s3_endpoint TEXT NOT NULL DEFAULT 's3.fr-par.scw.cloud',  -- Endpoint S3
+    s3_bucket TEXT,                                            -- Nom du bucket
+    s3_region TEXT DEFAULT 'fr-par',                          -- Région Scaleway
+    s3_access_key TEXT,                                        -- Clé d'accès S3
+    s3_secret_key TEXT,                                        -- Clé secrète S3 (à chiffrer en prod)
+    restic_password TEXT,                                      -- Mot de passe Restic
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Trigger pour mettre à jour updated_at
+CREATE TRIGGER update_settings_updated_at
+    BEFORE UPDATE ON settings
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Commentaires
+COMMENT ON TABLE settings IS 'Configuration globale du système Mon Rempart';
+COMMENT ON COLUMN settings.s3_secret_key IS 'Clé secrète S3 - À chiffrer en production';
+COMMENT ON COLUMN settings.restic_password IS 'Mot de passe de chiffrement Restic';
+
+-- Insertion d'une ligne de configuration par défaut (vide)
+INSERT INTO settings (s3_endpoint, s3_region) 
+VALUES ('s3.fr-par.scw.cloud', 'fr-par')
+ON CONFLICT DO NOTHING;
+
+-- =============================================================================
 -- Row Level Security (RLS) - Sécurité au niveau des lignes
 -- =============================================================================
 -- À activer en production pour un contrôle d'accès granulaire.
 
 -- ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE backup_logs ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 
 -- Politique exemple : Lecture publique pour les agents authentifiés
 -- CREATE POLICY "Lecture agents authentifiés" ON agents
@@ -98,3 +133,4 @@ COMMENT ON COLUMN backup_logs.status IS 'Statut: pending, running, success, fail
 --     ('PC-MAIRIE-01', 'online', NOW()),
 --     ('PC-COMPTABILITE', 'online', NOW() - INTERVAL '2 minutes'),
 --     ('PC-ACCUEIL', 'offline', NOW() - INTERVAL '30 minutes');
+

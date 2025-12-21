@@ -9,7 +9,7 @@
 APP_NAME := mon-rempart-agent
 VERSION := 0.4
 AGENT_DIR := agent
-DIST_DIR := dist
+DIST_DIR := web/public/downloads
 LDFLAGS := -ldflags="-s -w -X main.Version=$(VERSION)"
 
 # Couleurs pour les messages
@@ -21,7 +21,7 @@ NC := \033[0m # No Color
 # Commandes principales
 # =============================================================================
 
-.PHONY: all clean build-all build-windows build-mac build-linux build-mac-intel help
+.PHONY: all clean build-all build-windows build-mac build-mac-intel build-linux help
 
 ## Compile pour toutes les plateformes
 all: build-all
@@ -40,15 +40,17 @@ help:
 	@echo "  $(YELLOW)build-linux$(NC)     - Compile pour Linux (amd64)"
 	@echo "  $(YELLOW)clean$(NC)           - Supprime les fichiers compilés"
 	@echo ""
+	@echo "Les binaires sont créés dans: $(DIST_DIR)/"
+	@echo ""
 
-## Crée le dossier dist
+## Crée le dossier de distribution
 $(DIST_DIR):
 	@mkdir -p $(DIST_DIR)
 
 ## Nettoie les fichiers compilés
 clean:
 	@echo "$(YELLOW)🧹 Nettoyage...$(NC)"
-	@rm -rf $(DIST_DIR)
+	@rm -rf $(DIST_DIR)/*.exe $(DIST_DIR)/*-mac* $(DIST_DIR)/*-linux
 	@echo "$(GREEN)✅ Nettoyage terminé$(NC)"
 
 # =============================================================================

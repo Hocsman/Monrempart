@@ -2,6 +2,5 @@
     "$schema": "https://openapi.vercel.sh/vercel.json",
     "buildCommand": "npm run build",
     "outputDirectory": ".next",
-    "framework": "nextjs",
-    "ignoreCommand": "git diff HEAD^ HEAD --quiet -- ../web"
+    "framework": "nextjs"
 }

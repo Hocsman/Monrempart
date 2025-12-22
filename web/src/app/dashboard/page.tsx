@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
     Shield, Download, BookOpen, RefreshCw, Settings, LogOut,
@@ -169,10 +170,19 @@ function EmptyState() {
 }
 
 export default function DashboardPage() {
+    const router = useRouter();
     const [agents, setAgents] = useState<Agent[]>([]);
     const [logs, setLogs] = useState<BackupLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+
+    const handleLogout = async () => {
+        const supabase = getSupabase();
+        if (supabase) {
+            await supabase.auth.signOut();
+        }
+        router.push('/');
+    };
 
     const loadData = async () => {
         const supabase = getSupabase();
@@ -239,7 +249,11 @@ export default function DashboardPage() {
                         <Link href="/settings" className="text-slate-400 hover:text-white transition-colors p-2">
                             <Settings className="w-5 h-5" />
                         </Link>
-                        <button className="text-slate-400 hover:text-white transition-colors p-2">
+                        <button
+                            onClick={handleLogout}
+                            className="text-slate-400 hover:text-red-400 transition-colors p-2"
+                            title="Déconnexion"
+                        >
                             <LogOut className="w-5 h-5" />
                         </button>
                     </nav>

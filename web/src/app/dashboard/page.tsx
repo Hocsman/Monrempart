@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import {
     Shield, Download, BookOpen, RefreshCw, Settings, LogOut,
     Monitor, Clock, CheckCircle, AlertTriangle, XCircle,
-    HardDrive, FileText, Activity, ChevronRight, Plus
+    HardDrive, FileText, Activity, ChevronRight, Plus, Pencil, X, Trash2
 } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
@@ -47,6 +47,12 @@ interface BackupLog {
     duration_seconds: number;
     created_at: string;
     agents?: { hostname: string };
+}
+
+interface EditFormData {
+    hostname: string;
+    os: string;
+    ip_address: string;
 }
 
 function formatBytes(bytes: number): string {
@@ -176,12 +182,92 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
+    // État modale édition
+    const [editModalOpen, setEditModalOpen] = useState(false);
+    const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
+    const [editForm, setEditForm] = useState<EditFormData>({ hostname: '', os: '', ip_address: '' });
+    const [saving, setSaving] = useState(false);
+
+    // Toast notification
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3000);
+    };
+
     const handleLogout = async () => {
         const supabase = getSupabase();
         if (supabase) {
             await supabase.auth.signOut();
         }
         router.push('/');
+    };
+
+    const handleEditClick = (agent: Agent, e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setEditingAgent(agent);
+        setEditForm({
+            hostname: agent.hostname,
+            os: agent.os || '',
+            ip_address: agent.ip_address || ''
+        });
+        setEditModalOpen(true);
+    };
+
+    const handleSaveAgent = async () => {
+        if (!editingAgent) return;
+
+        setSaving(true);
+        try {
+            const res = await fetch(`/api/agents/${editingAgent.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editForm)
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                showToast('Agent modifié avec succès', 'success');
+                setEditModalOpen(false);
+                loadData(); // Refresh list
+            } else {
+                showToast(data.message || 'Erreur lors de la modification', 'error');
+            }
+        } catch {
+            showToast('Erreur de connexion', 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDeleteAgent = async () => {
+        if (!editingAgent) return;
+
+        if (!confirm(`Supprimer l'agent "${editingAgent.hostname}" ?`)) return;
+
+        setSaving(true);
+        try {
+            const res = await fetch(`/api/agents/${editingAgent.id}`, {
+                method: 'DELETE'
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                showToast('Agent supprimé', 'success');
+                setEditModalOpen(false);
+                loadData();
+            } else {
+                showToast(data.message || 'Erreur lors de la suppression', 'error');
+            }
+        } catch {
+            showToast('Erreur de connexion', 'error');
+        } finally {
+            setSaving(false);
+        }
     };
 
     const loadData = async () => {
@@ -341,6 +427,13 @@ export default function DashboardPage() {
                                                 {timeAgo(agent.last_seen)}
                                             </span>
                                             {getStatusIcon(agent.status)}
+                                            <button
+                                                onClick={(e) => handleEditClick(agent, e)}
+                                                className="p-2 text-slate-500 hover:text-emerald-400 hover:bg-slate-700/50 rounded-lg transition-all"
+                                                title="Modifier"
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                            </button>
                                             <ChevronRight className="w-5 h-5 text-slate-600 group-hover:text-emerald-500 transition-colors" />
                                         </div>
                                     </Link>
@@ -414,6 +507,108 @@ export default function DashboardPage() {
                     </>
                 )}
             </main>
+
+            {/* Toast Notification */}
+            {toast && (
+                <div className={`fixed bottom-6 right-6 px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 z-50 ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
+                    } text-white`}>
+                    {toast.type === 'success' ? (
+                        <CheckCircle className="w-5 h-5" />
+                    ) : (
+                        <XCircle className="w-5 h-5" />
+                    )}
+                    {toast.message}
+                </div>
+            )}
+
+            {/* Modale Édition Agent */}
+            {editModalOpen && editingAgent && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-slate-900 border border-slate-700 rounded-2xl p-8 w-full max-w-lg mx-4 shadow-2xl"
+                    >
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                                <Pencil className="w-5 h-5 text-emerald-500" />
+                                Modifier l&apos;agent
+                            </h2>
+                            <button
+                                onClick={() => setEditModalOpen(false)}
+                                className="text-slate-400 hover:text-white transition-colors"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-slate-400 text-sm mb-2">Nom de l&apos;agent</label>
+                                <input
+                                    type="text"
+                                    value={editForm.hostname}
+                                    onChange={(e) => setEditForm({ ...editForm, hostname: e.target.value })}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors"
+                                    placeholder="ex: PC-COMPTABILITE"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-slate-400 text-sm mb-2">Système d&apos;exploitation</label>
+                                <input
+                                    type="text"
+                                    value={editForm.os}
+                                    onChange={(e) => setEditForm({ ...editForm, os: e.target.value })}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors"
+                                    placeholder="ex: Windows 11"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-slate-400 text-sm mb-2">Adresse IP</label>
+                                <input
+                                    type="text"
+                                    value={editForm.ip_address}
+                                    onChange={(e) => setEditForm({ ...editForm, ip_address: e.target.value })}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-emerald-500 focus:outline-none transition-colors"
+                                    placeholder="ex: 192.168.1.100"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-8">
+                            <button
+                                onClick={handleDeleteAgent}
+                                disabled={saving}
+                                className="flex items-center gap-2 px-4 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                Supprimer
+                            </button>
+                            <div className="flex-1" />
+                            <button
+                                onClick={() => setEditModalOpen(false)}
+                                className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                onClick={handleSaveAgent}
+                                disabled={saving}
+                                className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                            >
+                                {saving ? (
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <CheckCircle className="w-4 h-4" />
+                                )}
+                                Enregistrer
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
         </div>
     );
 }

@@ -14,7 +14,7 @@ export default function DownloadPage() {
                         <span className="text-xl font-bold text-white">Mon Rempart</span>
                     </Link>
                     <Link
-                        href="/"
+                        href="/dashboard"
                         className="text-gray-400 hover:text-white transition-colors"
                     >
                         Retour au Dashboard

@@ -148,7 +148,7 @@ export default function SettingsPage() {
                         <span className="text-xl font-bold text-white">Mon Rempart</span>
                     </div>
                     <Link
-                        href="/"
+                        href="/dashboard"
                         className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
                     >
                         <ArrowLeft className="w-4 h-4" />

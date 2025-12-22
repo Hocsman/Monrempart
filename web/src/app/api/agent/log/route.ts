@@ -5,11 +5,19 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 interface LogPayload {
     agent_id?: string;
     hostname?: string;
-    status: 'pending' | 'running' | 'success' | 'failed';
+    // Pour backup_logs (sauvegardes)
+    status?: 'pending' | 'running' | 'success' | 'failed';
     message?: string;
     bytes_processed?: number;
     files_processed?: number;
+    files_new?: number;
+    files_changed?: number;
+    data_added?: number;
     duration_seconds?: number;
+    // Pour agent_logs (activité générale)
+    level?: 'info' | 'warning' | 'error';
+    details?: Record<string, unknown>;
+    log_type?: 'backup' | 'activity';
 }
 
 interface LogResponse {
@@ -32,7 +40,7 @@ function getSupabaseClient(): SupabaseClient | null {
 
 /**
  * POST /api/agent/log
- * Reçoit les logs de sauvegarde des agents
+ * Reçoit les logs de sauvegarde et d'activité des agents
  */
 export async function POST(request: NextRequest): Promise<NextResponse<LogResponse>> {
     try {
@@ -45,14 +53,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<LogRespon
         }
 
         const body: LogPayload = await request.json();
-
-        // Validation
-        if (!body.status) {
-            return NextResponse.json(
-                { success: false, message: 'Le champ status est requis' },
-                { status: 400 }
-            );
-        }
 
         // Si agent_id n'est pas fourni mais hostname oui, on cherche l'agent
         let agentId = body.agent_id;
@@ -76,37 +76,109 @@ export async function POST(request: NextRequest): Promise<NextResponse<LogRespon
             );
         }
 
-        // Insertion du log
-        const { data: newLog, error } = await supabase
-            .from('backup_logs')
-            .insert({
-                agent_id: agentId,
-                status: body.status,
-                message: body.message || null,
-                bytes_processed: body.bytes_processed || 0,
-                files_processed: body.files_processed || 0,
-                duration_seconds: body.duration_seconds || null,
-                completed_at: body.status === 'success' || body.status === 'failed'
-                    ? new Date().toISOString()
-                    : null,
+        // Mettre à jour last_seen de l'agent (prouve qu'il est en ligne)
+        await supabase
+            .from('agents')
+            .update({
+                last_seen: new Date().toISOString(),
+                status: 'online'
             })
-            .select('id')
-            .single();
+            .eq('id', agentId);
 
-        if (error) {
-            console.error('Erreur insertion log:', error);
-            return NextResponse.json(
-                { success: false, message: 'Erreur de création du log' },
-                { status: 500 }
-            );
+        // Déterminer le type de log
+        const logType = body.log_type || (body.status ? 'backup' : 'activity');
+
+        if (logType === 'activity' && body.level) {
+            // Log d'activité générale -> table agent_logs
+            const { data: newLog, error } = await supabase
+                .from('agent_logs')
+                .insert({
+                    agent_id: agentId,
+                    level: body.level,
+                    message: body.message || '',
+                    details: body.details || {},
+                })
+                .select('id')
+                .single();
+
+            if (error) {
+                console.error('Erreur insertion agent_logs:', error);
+                return NextResponse.json(
+                    { success: false, message: 'Erreur de création du log' },
+                    { status: 500 }
+                );
+            }
+
+            console.log(`📝 Activity log créé pour agent ${agentId}: [${body.level}] ${body.message}`);
+
+            return NextResponse.json({
+                success: true,
+                log_id: newLog?.id,
+            }, { status: 201 });
+
+        } else {
+            // Log de sauvegarde -> table backup_logs
+            if (!body.status) {
+                return NextResponse.json(
+                    { success: false, message: 'Le champ status est requis pour les logs de backup' },
+                    { status: 400 }
+                );
+            }
+
+            const { data: newLog, error } = await supabase
+                .from('backup_logs')
+                .insert({
+                    agent_id: agentId,
+                    status: body.status,
+                    message: body.message || null,
+                    files_new: body.files_new || body.files_processed || 0,
+                    files_changed: body.files_changed || 0,
+                    data_added: body.data_added || body.bytes_processed || 0,
+                    duration_seconds: body.duration_seconds || 0,
+                })
+                .select('id')
+                .single();
+
+            if (error) {
+                console.error('Erreur insertion backup_logs:', error);
+                return NextResponse.json(
+                    { success: false, message: 'Erreur de création du log' },
+                    { status: 500 }
+                );
+            }
+
+            // Aussi créer un log d'activité pour tracer l'événement
+            const activityLevel = body.status === 'failed' ? 'error' :
+                body.status === 'success' ? 'info' : 'info';
+            const activityMessage = body.status === 'success'
+                ? `Sauvegarde terminée avec succès`
+                : body.status === 'failed'
+                    ? `Échec de la sauvegarde: ${body.message || 'Erreur inconnue'}`
+                    : `Sauvegarde ${body.status}`;
+
+            await supabase
+                .from('agent_logs')
+                .insert({
+                    agent_id: agentId,
+                    level: activityLevel,
+                    message: activityMessage,
+                    details: {
+                        backup_id: newLog?.id,
+                        status: body.status,
+                        files_new: body.files_new || 0,
+                        files_changed: body.files_changed || 0,
+                        data_added: body.data_added || 0,
+                        duration_seconds: body.duration_seconds || 0,
+                    },
+                });
+
+            console.log(`📦 Backup log créé pour agent ${agentId}: ${body.status}`);
+
+            return NextResponse.json({
+                success: true,
+                log_id: newLog?.id,
+            }, { status: 201 });
         }
-
-        console.log(`📝 Log créé pour agent ${agentId}: ${body.status}`);
-
-        return NextResponse.json({
-            success: true,
-            log_id: newLog?.id,
-        }, { status: 201 });
 
     } catch (error) {
         console.error('Erreur log:', error);
@@ -119,7 +191,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<LogRespon
 
 /**
  * GET /api/agent/log
- * Récupère les derniers logs
+ * Récupère les derniers logs (backup_logs ou agent_logs)
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
     const supabase = getSupabaseClient();
@@ -132,39 +204,86 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         });
     }
 
-    // Paramètre optionnel pour le nombre de logs
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '10');
+    const agentId = searchParams.get('agent_id');
+    const type = searchParams.get('type') || 'backup'; // 'backup' ou 'activity'
 
-    const { data: logs, error } = await supabase
-        .from('backup_logs')
-        .select(`
-      id,
-      status,
-      message,
-      bytes_processed,
-      files_processed,
-      duration_seconds,
-      created_at,
-      completed_at,
-      agents (
-        id,
-        hostname
-      )
-    `)
-        .order('created_at', { ascending: false })
-        .limit(limit);
+    if (type === 'activity') {
+        // Récupérer les agent_logs
+        let query = supabase
+            .from('agent_logs')
+            .select(`
+                id,
+                level,
+                message,
+                details,
+                created_at,
+                agents (
+                    id,
+                    hostname
+                )
+            `)
+            .order('created_at', { ascending: false })
+            .limit(limit);
 
-    if (error) {
-        console.error('Erreur récupération logs:', error);
-        return NextResponse.json(
-            { success: false, logs: [], message: 'Erreur de récupération' },
-            { status: 500 }
-        );
+        if (agentId) {
+            query = query.eq('agent_id', agentId);
+        }
+
+        const { data: logs, error } = await query;
+
+        if (error) {
+            console.error('Erreur récupération agent_logs:', error);
+            return NextResponse.json(
+                { success: false, logs: [], message: 'Erreur de récupération' },
+                { status: 500 }
+            );
+        }
+
+        return NextResponse.json({
+            success: true,
+            logs: logs || [],
+        });
+
+    } else {
+        // Récupérer les backup_logs (défaut)
+        let query = supabase
+            .from('backup_logs')
+            .select(`
+                id,
+                status,
+                message,
+                files_new,
+                files_changed,
+                data_added,
+                duration_seconds,
+                created_at,
+                agents (
+                    id,
+                    hostname
+                )
+            `)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (agentId) {
+            query = query.eq('agent_id', agentId);
+        }
+
+        const { data: logs, error } = await query;
+
+        if (error) {
+            console.error('Erreur récupération backup_logs:', error);
+            return NextResponse.json(
+                { success: false, logs: [], message: 'Erreur de récupération' },
+                { status: 500 }
+            );
+        }
+
+        return NextResponse.json({
+            success: true,
+            logs: logs || [],
+        });
     }
-
-    return NextResponse.json({
-        success: true,
-        logs: logs || [],
-    });
 }

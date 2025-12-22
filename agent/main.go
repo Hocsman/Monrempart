@@ -59,15 +59,27 @@ type RemoteConfig struct {
 	Message      string `json:"message,omitempty"`
 }
 
-// LogPayload représente les données de log envoyées à l'API
+// LogPayload représente les données de log envoyées à l'API (backups)
 type LogPayload struct {
-	AgentID        string `json:"agent_id"`
-	Hostname       string `json:"hostname"`
-	Status         string `json:"status"`
-	Message        string `json:"message,omitempty"`
-	BytesProcessed int64  `json:"bytes_processed"`
-	FilesProcessed int    `json:"files_processed,omitempty"`
-	Duration       int    `json:"duration_seconds,omitempty"`
+	AgentID         string `json:"agent_id"`
+	Hostname        string `json:"hostname"`
+	Status          string `json:"status"`
+	Message         string `json:"message,omitempty"`
+	FilesNew        int    `json:"files_new,omitempty"`
+	FilesChanged    int    `json:"files_changed,omitempty"`
+	DataAdded       int64  `json:"data_added,omitempty"`
+	DurationSeconds int    `json:"duration_seconds,omitempty"`
+	LogType         string `json:"log_type,omitempty"`
+}
+
+// ActivityLogPayload représente les logs d'activité générale
+type ActivityLogPayload struct {
+	AgentID  string                 `json:"agent_id"`
+	Hostname string                 `json:"hostname"`
+	Level    string                 `json:"level"` // info, warning, error
+	Message  string                 `json:"message"`
+	Details  map[string]interface{} `json:"details,omitempty"`
+	LogType  string                 `json:"log_type"`
 }
 
 // Agent global state
@@ -235,7 +247,7 @@ func initBackupSystem() {
 	// Initialisation du dépôt
 	if err := wrapper.InitRepo(); err != nil {
 		fmt.Printf("❌ Échec initialisation dépôt: %v\n", err)
-		sendLog("failed", fmt.Sprintf("Échec init repo: %v", err), 0, 0, 0)
+		sendLog("failed", fmt.Sprintf("Échec init repo: %v", err), 0, 0, 0, 0)
 		return
 	}
 
@@ -268,7 +280,7 @@ func runInitialBackup() {
 	result, err := resticWrapper.RunBackup(testDir)
 	if err != nil {
 		fmt.Printf("❌ Échec sauvegarde: %v\n", err)
-		sendLog("failed", err.Error(), 0, 0, 0)
+		sendLog("failed", err.Error(), 0, 0, 0, 0)
 		return
 	}
 
@@ -277,7 +289,8 @@ func runInitialBackup() {
 		sendLog("success",
 			fmt.Sprintf("Snapshot %s créé", result.SnapshotID),
 			result.BytesProcessed,
-			result.FilesNew+result.FilesChanged,
+			result.FilesNew,
+			result.FilesChanged,
 			int(result.Duration),
 		)
 
@@ -363,17 +376,19 @@ func sendHeartbeat() string {
 }
 
 // sendLog envoie un log de sauvegarde à l'API
-func sendLog(status, message string, bytesProcessed int64, filesProcessed, duration int) {
+func sendLog(status, message string, bytesProcessed int64, filesNew, filesChanged, duration int) {
 	timestamp := time.Now().Format("15:04:05")
 
 	payload := LogPayload{
-		AgentID:        agentID,
-		Hostname:       hostname,
-		Status:         status,
-		Message:        message,
-		BytesProcessed: bytesProcessed,
-		FilesProcessed: filesProcessed,
-		Duration:       duration,
+		AgentID:         agentID,
+		Hostname:        hostname,
+		Status:          status,
+		Message:         message,
+		FilesNew:        filesNew,
+		FilesChanged:    filesChanged,
+		DataAdded:       bytesProcessed,
+		DurationSeconds: duration,
+		LogType:         "backup",
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -401,8 +416,51 @@ func sendLog(status, message string, bytesProcessed int64, filesProcessed, durat
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
-		fmt.Printf("[%s] 📝 Log envoyé: %s\n", timestamp, status)
+		fmt.Printf("[%s] 📝 Log backup envoyé: %s\n", timestamp, status)
 	} else {
 		fmt.Printf("[%s] ⚠️  Erreur envoi log: %d\n", timestamp, resp.StatusCode)
 	}
 }
+
+// sendActivityLog envoie un log d'activité générale à l'API
+func sendActivityLog(level, message string, details map[string]interface{}) {
+	timestamp := time.Now().Format("15:04:05")
+
+	payload := ActivityLogPayload{
+		AgentID:  agentID,
+		Hostname: hostname,
+		Level:    level,
+		Message:  message,
+		Details:  details,
+		LogType:  "activity",
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Printf("[%s] ❌ Erreur sérialisation activity log: %v\n", timestamp, err)
+		return
+	}
+
+	url := cfg.APIEndpoint + "/api/agent/log"
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Printf("[%s] ❌ Erreur création requête activity log: %v\n", timestamp, err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", fmt.Sprintf("%s/%s", AppName, Version))
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("[%s] ⚠️  Impossible d'envoyer l'activity log: %v\n", timestamp, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+		fmt.Printf("[%s] 📋 Activity log envoyé: [%s] %s\n", timestamp, level, message)
+	}
+}
+

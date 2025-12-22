@@ -309,14 +309,15 @@ export default function DashboardPage() {
 
                             <div className="grid gap-4">
                                 {agents.map((agent) => (
-                                    <div
+                                    <Link
                                         key={agent.id}
-                                        className="bg-slate-800/30 border border-slate-700/50 rounded-xl p-6 flex items-center justify-between"
+                                        href={`/dashboard/agent/${agent.id}`}
+                                        className="bg-slate-800/30 border border-slate-700/50 hover:border-emerald-500/50 rounded-xl p-6 flex items-center justify-between transition-all group"
                                     >
                                         <div className="flex items-center gap-4">
                                             <div className={`w-3 h-3 rounded-full ${getStatusColor(agent.status)}`} />
                                             <div>
-                                                <h3 className="text-white font-medium">{agent.hostname}</h3>
+                                                <h3 className="text-white font-medium group-hover:text-emerald-400 transition-colors">{agent.hostname}</h3>
                                                 <p className="text-slate-400 text-sm">{agent.os} • {agent.ip_address}</p>
                                             </div>
                                         </div>
@@ -326,8 +327,9 @@ export default function DashboardPage() {
                                                 {timeAgo(agent.last_seen)}
                                             </span>
                                             {getStatusIcon(agent.status)}
+                                            <ChevronRight className="w-5 h-5 text-slate-600 group-hover:text-emerald-500 transition-colors" />
                                         </div>
-                                    </div>
+                                    </Link>
                                 ))}
                             </div>
                         </section>
@@ -358,8 +360,8 @@ export default function DashboardPage() {
                                                     <td className="px-6 py-4 text-white">{log.agents?.hostname || 'N/A'}</td>
                                                     <td className="px-6 py-4">
                                                         <span className={`px-2 py-1 rounded text-xs font-medium ${log.status === 'success'
-                                                                ? 'bg-emerald-500/20 text-emerald-400'
-                                                                : 'bg-red-500/20 text-red-400'
+                                                            ? 'bg-emerald-500/20 text-emerald-400'
+                                                            : 'bg-red-500/20 text-red-400'
                                                             }`}>
                                                             {log.status === 'success' ? 'Réussi' : 'Échec'}
                                                         </span>

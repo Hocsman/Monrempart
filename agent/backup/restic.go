@@ -36,16 +36,16 @@ type ResticWrapper struct {
 
 // BackupResult représente le résultat d'une sauvegarde
 type BackupResult struct {
-	Success        bool      `json:"success"`
-	SnapshotID     string    `json:"snapshot_id,omitempty"`
-	FilesNew       int       `json:"files_new"`
-	FilesChanged   int       `json:"files_changed"`
-	FilesUnmodified int      `json:"files_unmodified"`
-	BytesAdded     int64     `json:"bytes_added"`
-	BytesProcessed int64     `json:"bytes_processed"`
-	Duration       float64   `json:"duration_seconds"`
-	Error          string    `json:"error,omitempty"`
-	Timestamp      time.Time `json:"timestamp"`
+	Success         bool      `json:"success"`
+	SnapshotID      string    `json:"snapshot_id,omitempty"`
+	FilesNew        int       `json:"files_new"`
+	FilesChanged    int       `json:"files_changed"`
+	FilesUnmodified int       `json:"files_unmodified"`
+	BytesAdded      int64     `json:"bytes_added"`
+	BytesProcessed  int64     `json:"bytes_processed"`
+	Duration        float64   `json:"duration_seconds"`
+	Error           string    `json:"error,omitempty"`
+	Timestamp       time.Time `json:"timestamp"`
 }
 
 // Snapshot représente un snapshot Restic
@@ -223,6 +223,51 @@ func (r *ResticWrapper) GetSnapshots() ([]Snapshot, error) {
 	}
 
 	return snapshots, nil
+}
+
+// RestoreResult représente le résultat d'une restauration
+type RestoreResult struct {
+	Success       bool      `json:"success"`
+	SnapshotID    string    `json:"snapshot_id"`
+	TargetPath    string    `json:"target_path"`
+	FilesRestored int       `json:"files_restored"`
+	BytesRestored int64     `json:"bytes_restored"`
+	Duration      float64   `json:"duration_seconds"`
+	Error         string    `json:"error,omitempty"`
+	Timestamp     time.Time `json:"timestamp"`
+}
+
+// Restore restaure un snapshot vers un chemin cible
+func (r *ResticWrapper) Restore(snapshotID, targetPath string) (*RestoreResult, error) {
+	startTime := time.Now()
+	result := &RestoreResult{
+		SnapshotID: snapshotID,
+		TargetPath: targetPath,
+		Timestamp:  startTime,
+	}
+
+	fmt.Printf("🔄 Restauration du snapshot %s vers %s\n", snapshotID, targetPath)
+
+	// Exécution de la restauration
+	stdout, stderr, err := r.runCommand("restore", snapshotID, "--target", targetPath)
+	result.Duration = time.Since(startTime).Seconds()
+
+	if err != nil {
+		result.Error = fmt.Sprintf("échec restauration: %s - %s", err.Error(), stderr)
+		return result, fmt.Errorf(result.Error)
+	}
+
+	// La restauration a réussi
+	result.Success = true
+	fmt.Printf("   ✅ Restauration terminée en %.2fs\n", result.Duration)
+	fmt.Printf("   📁 Fichiers restaurés vers: %s\n", targetPath)
+
+	// Log de la sortie restic si disponible
+	if stdout != "" {
+		fmt.Printf("   📝 %s\n", strings.TrimSpace(stdout))
+	}
+
+	return result, nil
 }
 
 // formatBytes formate une taille en octets de manière lisible

@@ -40,10 +40,18 @@ type HeartbeatPayload struct {
 
 // HeartbeatResponse représente la réponse du Dashboard
 type HeartbeatResponse struct {
-	Success bool   `json:"success"`
-	Command string `json:"command"`
-	Message string `json:"message,omitempty"`
-	AgentID string `json:"agent_id,omitempty"`
+	Success       bool           `json:"success"`
+	Command       string         `json:"command"`
+	Message       string         `json:"message,omitempty"`
+	AgentID       string         `json:"agent_id,omitempty"`
+	RestoreConfig *RestoreConfig `json:"restore_config,omitempty"`
+}
+
+// RestoreConfig contient les paramètres pour une restauration
+type RestoreConfig struct {
+	RequestID  string `json:"request_id"`
+	SnapshotID string `json:"snapshot_id"`
+	TargetPath string `json:"target_path"`
 }
 
 // RemoteConfig représente la configuration reçue de l'API
@@ -302,6 +310,9 @@ func runInitialBackup() {
 				fmt.Printf("   • %s - %s\n", s.ShortID, s.Time.Format("02/01/2006 15:04"))
 			}
 		}
+
+		// Synchroniser les snapshots avec le serveur
+		go syncSnapshots()
 	}
 }
 
@@ -366,6 +377,14 @@ func sendHeartbeat() string {
 		case "backup_now":
 			fmt.Printf("[%s] 📦 Commande de sauvegarde reçue!\n", timestamp)
 			go runInitialBackup()
+		case "restore":
+			if response.RestoreConfig != nil {
+				fmt.Printf("[%s] 🔄 Commande de restauration reçue!\n", timestamp)
+				go runRestore(response.RestoreConfig)
+			}
+		case "sync_snapshots":
+			fmt.Printf("[%s] 📸 Synchronisation des snapshots demandée\n", timestamp)
+			go syncSnapshots()
 		case "shutdown":
 			fmt.Printf("[%s] 🛑 Arrêt demandé par le serveur\n", timestamp)
 			os.Exit(0)
@@ -464,3 +483,135 @@ func sendActivityLog(level, message string, details map[string]interface{}) {
 	}
 }
 
+// SnapshotSyncPayload représente les données de sync envoyées à l'API
+type SnapshotSyncPayload struct {
+	AgentID   string            `json:"agent_id"`
+	Hostname  string            `json:"hostname"`
+	Snapshots []backup.Snapshot `json:"snapshots"`
+}
+
+// runRestore exécute une restauration demandée par le serveur
+func runRestore(restoreConfig *RestoreConfig) {
+	timestamp := time.Now().Format("15:04:05")
+
+	if resticWrapper == nil {
+		fmt.Printf("[%s] ⚠️  Wrapper Restic non initialisé - restauration ignorée\n", timestamp)
+		updateRestoreStatus(restoreConfig.RequestID, "failed", "Wrapper Restic non initialisé")
+		return
+	}
+
+	fmt.Printf("[%s] 🔄 Démarrage de la restauration...\n", timestamp)
+	fmt.Printf("   📸 Snapshot: %s\n", restoreConfig.SnapshotID)
+	fmt.Printf("   📁 Destination: %s\n", restoreConfig.TargetPath)
+
+	// Exécution de la restauration
+	result, err := resticWrapper.Restore(restoreConfig.SnapshotID, restoreConfig.TargetPath)
+	if err != nil {
+		fmt.Printf("[%s] ❌ Échec restauration: %v\n", timestamp, err)
+		updateRestoreStatus(restoreConfig.RequestID, "failed", err.Error())
+		sendActivityLog("error", fmt.Sprintf("Restauration échouée: %v", err), nil)
+		return
+	}
+
+	if result.Success {
+		fmt.Printf("[%s] ✅ Restauration réussie!\n", timestamp)
+		updateRestoreStatus(restoreConfig.RequestID, "success", "Restauration terminée avec succès")
+		sendActivityLog("info", fmt.Sprintf("Restauration du snapshot %s vers %s réussie",
+			restoreConfig.SnapshotID, restoreConfig.TargetPath), nil)
+	}
+}
+
+// updateRestoreStatus met à jour le statut d'une demande de restauration
+func updateRestoreStatus(requestID, status, message string) {
+	timestamp := time.Now().Format("15:04:05")
+
+	payload := map[string]interface{}{
+		"request_id": requestID,
+		"status":     status,
+		"message":    message,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Printf("[%s] ❌ Erreur sérialisation restore status: %v\n", timestamp, err)
+		return
+	}
+
+	url := cfg.APIEndpoint + "/api/restore/status"
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Printf("[%s] ❌ Erreur création requête restore status: %v\n", timestamp, err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", fmt.Sprintf("%s/%s", AppName, Version))
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("[%s] ⚠️  Impossible d'envoyer le status restore: %v\n", timestamp, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+		fmt.Printf("[%s] 📝 Restore status envoyé: %s\n", timestamp, status)
+	}
+}
+
+// syncSnapshots envoie la liste des snapshots au serveur
+func syncSnapshots() {
+	timestamp := time.Now().Format("15:04:05")
+
+	if resticWrapper == nil {
+		fmt.Printf("[%s] ⚠️  Wrapper Restic non initialisé - sync ignorée\n", timestamp)
+		return
+	}
+
+	// Récupération des snapshots
+	snapshots, err := resticWrapper.GetSnapshots()
+	if err != nil {
+		fmt.Printf("[%s] ❌ Échec récupération snapshots: %v\n", timestamp, err)
+		return
+	}
+
+	fmt.Printf("[%s] 📸 %d snapshots trouvés, synchronisation...\n", timestamp, len(snapshots))
+
+	// Envoi au serveur
+	payload := SnapshotSyncPayload{
+		AgentID:   agentID,
+		Hostname:  hostname,
+		Snapshots: snapshots,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Printf("[%s] ❌ Erreur sérialisation snapshots: %v\n", timestamp, err)
+		return
+	}
+
+	url := cfg.APIEndpoint + "/api/agent/snapshots"
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Printf("[%s] ❌ Erreur création requête snapshots: %v\n", timestamp, err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", fmt.Sprintf("%s/%s", AppName, Version))
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("[%s] ⚠️  Impossible d'envoyer les snapshots: %v\n", timestamp, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+		fmt.Printf("[%s] ✅ Snapshots synchronisés avec le serveur\n", timestamp)
+	} else {
+		fmt.Printf("[%s] ⚠️  Erreur sync snapshots: status %d\n", timestamp, resp.StatusCode)
+	}
+}

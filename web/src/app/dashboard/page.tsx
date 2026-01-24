@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import {
     Shield, Download, BookOpen, RefreshCw, Settings, LogOut,
     Monitor, Clock, CheckCircle, AlertTriangle, XCircle,
-    HardDrive, FileText, Activity, ChevronRight, Plus, Pencil, X, Trash2
+    HardDrive, FileText, Activity, ChevronRight, Plus, Pencil, X, Trash2, RotateCcw
 } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import StatsCharts from './components/StatsCharts';
@@ -350,6 +350,9 @@ export default function DashboardPage() {
                         </Link>
 
                         <nav className="flex items-center gap-4">
+                            <Link href="/dashboard/restore" className="text-slate-400 hover:text-white transition-colors p-2" title="Restauration">
+                                <RotateCcw className="w-5 h-5" />
+                            </Link>
                             <NotificationBell />
                             <Link href="/settings" className="text-slate-400 hover:text-white transition-colors p-2">
                                 <Settings className="w-5 h-5" />

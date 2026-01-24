@@ -10,9 +10,14 @@ interface HeartbeatPayload {
 
 interface HeartbeatResponse {
     success: boolean;
-    command: 'idle' | 'backup_now' | 'update' | 'shutdown';
+    command: 'idle' | 'backup_now' | 'update' | 'shutdown' | 'restore' | 'sync_snapshots';
     message?: string;
     agent_id?: string;
+    restore_config?: {
+        request_id: string;
+        snapshot_id: string;
+        target_path: string;
+    };
 }
 
 // Fonction pour créer le client Supabase (lazy loading)
@@ -116,7 +121,38 @@ export async function POST(request: NextRequest): Promise<NextResponse<Heartbeat
             console.log(`🆕 Nouvel agent "${body.hostname}" créé (ID: ${agentId})`);
         }
 
-        // Réponse avec commande (pour l'instant, toujours "idle")
+        // Vérifier s'il y a une demande de restauration en attente
+        const { data: pendingRestore } = await supabase
+            .from('restore_requests')
+            .select('id, snapshot_id, target_path')
+            .eq('agent_id', agentId)
+            .eq('status', 'pending')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .single();
+
+        if (pendingRestore) {
+            // Marquer comme "running"
+            await supabase
+                .from('restore_requests')
+                .update({ status: 'running', started_at: new Date().toISOString() })
+                .eq('id', pendingRestore.id);
+
+            console.log(`🔄 Envoi commande restore à "${body.hostname}" - Snapshot: ${pendingRestore.snapshot_id}`);
+
+            return NextResponse.json({
+                success: true,
+                command: 'restore',
+                agent_id: agentId,
+                restore_config: {
+                    request_id: pendingRestore.id,
+                    snapshot_id: pendingRestore.snapshot_id,
+                    target_path: pendingRestore.target_path
+                }
+            });
+        }
+
+        // Réponse normale - idle
         return NextResponse.json({
             success: true,
             command: 'idle',

@@ -10,6 +10,7 @@ import {
     Info, AlertCircle, Server, Globe
 } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import AgentCharts from '../../components/AgentCharts';
 
 // Supabase client (lazy initialization)
 let supabaseInstance: SupabaseClient | null = null;
@@ -318,13 +319,20 @@ export default function AgentDetailPage() {
                     </div>
                 </motion.div>
 
+                {/* Graphiques Agent */}
+                <AgentCharts
+                    backupLogs={backupLogs}
+                    activityLogs={activityLogs}
+                    agentCreatedAt={agent.created_at}
+                />
+
                 {/* Tabs */}
                 <div className="flex gap-2 mb-6">
                     <button
                         onClick={() => setActiveTab('activity')}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${activeTab === 'activity'
-                                ? 'bg-emerald-500 text-white'
-                                : 'bg-slate-800 text-slate-400 hover:text-white'
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-slate-800 text-slate-400 hover:text-white'
                             }`}
                     >
                         <Activity className="w-4 h-4" />
@@ -333,8 +341,8 @@ export default function AgentDetailPage() {
                     <button
                         onClick={() => setActiveTab('backups')}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${activeTab === 'backups'
-                                ? 'bg-emerald-500 text-white'
-                                : 'bg-slate-800 text-slate-400 hover:text-white'
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-slate-800 text-slate-400 hover:text-white'
                             }`}
                     >
                         <HardDrive className="w-4 h-4" />
@@ -413,10 +421,10 @@ export default function AgentDetailPage() {
                                                 <td className="px-6 py-4 text-slate-300">{formatDate(log.created_at)}</td>
                                                 <td className="px-6 py-4">
                                                     <span className={`px-2 py-1 rounded text-xs font-medium ${log.status === 'success'
-                                                            ? 'bg-emerald-500/20 text-emerald-400'
-                                                            : log.status === 'failed'
-                                                                ? 'bg-red-500/20 text-red-400'
-                                                                : 'bg-amber-500/20 text-amber-400'
+                                                        ? 'bg-emerald-500/20 text-emerald-400'
+                                                        : log.status === 'failed'
+                                                            ? 'bg-red-500/20 text-red-400'
+                                                            : 'bg-amber-500/20 text-amber-400'
                                                         }`}>
                                                         {log.status === 'success' ? 'Réussi' : log.status === 'failed' ? 'Échec' : log.status}
                                                     </span>

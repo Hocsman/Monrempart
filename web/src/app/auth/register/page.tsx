@@ -95,7 +95,7 @@ export default function RegisterPage() {
             if (data.user) {
                 setSuccess(true);
                 setTimeout(() => {
-                    router.push('/dashboard');
+                    router.push('/onboarding');
                 }, 2000);
             }
         } catch (err: unknown) {

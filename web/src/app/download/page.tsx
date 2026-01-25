@@ -1,181 +1,204 @@
 'use client';
 
-import { Shield, Download, Monitor, Apple, Terminal, CheckCircle, ArrowRight } from 'lucide-react';
+import { useState } from 'react';
+import { motion } from 'framer-motion';
 import Link from 'next/link';
+import {
+    Shield, Download, Terminal, Apple, Monitor, Laptop,
+    ChevronRight, Copy, Check, ArrowRight
+} from 'lucide-react';
 
 export default function DownloadPage() {
+    const [selectedOS, setSelectedOS] = useState<'windows' | 'mac' | 'linux'>('windows');
+    const [copied, setCopied] = useState(false);
+
+    const getCommand = () => {
+        switch (selectedOS) {
+            case 'windows': return 'powershell -c "irm https://monrempart.fr/install.ps1 | iex"';
+            case 'mac': return 'curl -sSL https://monrempart.fr/install.sh | bash';
+            case 'linux': return 'curl -sSL https://monrempart.fr/install.sh | sudo bash';
+        }
+    };
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(getCommand());
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
     return (
-        <div className="min-h-screen bg-bleu-marine">
+        <div className="min-h-screen bg-slate-950">
             {/* Header */}
-            <header className="bg-bleu-marine/80 backdrop-blur-md border-b border-white/10">
-                <nav className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <header className="fixed top-0 w-full z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
+                <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
                     <Link href="/" className="flex items-center gap-3">
-                        <Shield className="w-8 h-8 text-vert-emeraude" />
+                        <Shield className="w-8 h-8 text-emerald-500" />
                         <span className="text-xl font-bold text-white">Mon Rempart</span>
                     </Link>
-                    <Link
-                        href="/dashboard"
-                        className="text-gray-400 hover:text-white transition-colors"
-                    >
-                        Retour au Dashboard
-                    </Link>
-                </nav>
+                    <div className="flex items-center gap-4">
+                        <Link href="/auth/login" className="text-slate-300 hover:text-white transition-colors hidden sm:block">
+                            Connexion
+                        </Link>
+                        <Link href="/auth/register" className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-lg font-medium transition-colors">
+                            Essai gratuit
+                        </Link>
+                    </div>
+                </div>
             </header>
 
-            <main className="max-w-4xl mx-auto px-6 py-16">
-                {/* Hero */}
-                <div className="text-center mb-16">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-vert-emeraude/10 rounded-2xl mb-6">
-                        <Download className="w-10 h-10 text-vert-emeraude" />
+            <main className="pt-32 pb-20 px-6">
+                <div className="max-w-4xl mx-auto">
+                    <div className="text-center mb-16">
+                        <motion.h1
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="text-4xl md:text-5xl font-bold text-white mb-6"
+                        >
+                            Télécharger l&apos;Agent
+                        </motion.h1>
+                        <motion.p
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.1 }}
+                            className="text-xl text-slate-400 max-w-2xl mx-auto"
+                        >
+                            Protégez vos serveurs en quelques minutes. Compatible avec Windows, macOS et Linux.
+                        </motion.p>
                     </div>
-                    <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
-                        Télécharger l&apos;Agent
-                    </h1>
-                    <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-                        Installez l&apos;agent Mon Rempart sur vos postes de travail pour protéger vos données automatiquement.
-                    </p>
-                </div>
 
-                {/* Étapes */}
-                <div className="grid md:grid-cols-3 gap-6 mb-16">
-                    <div className="bg-bleu-marine-clair rounded-xl border border-white/10 p-6 text-center">
-                        <div className="w-10 h-10 bg-vert-emeraude rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold">
-                            1
-                        </div>
-                        <h3 className="text-white font-semibold mb-2">Téléchargez</h3>
-                        <p className="text-gray-400 text-sm">Choisissez la version pour votre système</p>
+                    {/* Sélecteur OS */}
+                    <div className="grid md:grid-cols-3 gap-6 mb-12">
+                        {[
+                            { id: 'windows', name: 'Windows', icon: Monitor, desc: 'Windows 10, 11, Server 2016+' },
+                            { id: 'mac', name: 'macOS', icon: Apple, desc: 'Monterey, Ventura, Sonoma' },
+                            { id: 'linux', name: 'Linux', icon: Laptop, desc: 'Ubuntu, Debian, CentOS...' }
+                        ].map((os) => (
+                            <button
+                                key={os.id}
+                                onClick={() => setSelectedOS(os.id as 'windows' | 'mac' | 'linux')}
+                                className={`p-6 rounded-2xl border-2 transition-all ${selectedOS === os.id
+                                        ? 'bg-emerald-500/10 border-emerald-500'
+                                        : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                                    }`}
+                            >
+                                <os.icon className={`w-12 h-12 mb-4 ${selectedOS === os.id ? 'text-emerald-500' : 'text-slate-400'
+                                    }`} />
+                                <h3 className={`text-xl font-bold mb-2 ${selectedOS === os.id ? 'text-white' : 'text-slate-300'
+                                    }`}>{os.name}</h3>
+                                <p className="text-sm text-slate-500">{os.desc}</p>
+                            </button>
+                        ))}
                     </div>
-                    <div className="bg-bleu-marine-clair rounded-xl border border-white/10 p-6 text-center">
-                        <div className="w-10 h-10 bg-vert-emeraude rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold">
-                            2
-                        </div>
-                        <h3 className="text-white font-semibold mb-2">Exécutez</h3>
-                        <p className="text-gray-400 text-sm">Lancez l&apos;agent en double-cliquant dessus</p>
-                    </div>
-                    <div className="bg-bleu-marine-clair rounded-xl border border-white/10 p-6 text-center">
-                        <div className="w-10 h-10 bg-vert-emeraude rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold">
-                            3
-                        </div>
-                        <h3 className="text-white font-semibold mb-2">Protégé !</h3>
-                        <p className="text-gray-400 text-sm">Vos sauvegardes démarrent automatiquement</p>
-                    </div>
-                </div>
 
-                {/* Boutons de téléchargement */}
-                <div className="space-y-6">
-                    {/* Windows - Principal */}
-                    <a
-                        href="/downloads/mon-rempart-agent.exe"
-                        className="group block bg-gradient-to-r from-vert-emeraude to-vert-emeraude-fonce p-8 rounded-2xl hover:scale-[1.02] transition-all"
+                    {/* Zone d'installation */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2 }}
+                        className="bg-slate-900 border border-slate-800 rounded-3xl p-8 md:p-12 mb-12"
                     >
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-6">
-                                <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center">
-                                    <Monitor className="w-8 h-8 text-white" />
-                                </div>
-                                <div>
-                                    <h2 className="text-2xl font-bold text-white mb-1">
-                                        Télécharger pour Windows
-                                    </h2>
-                                    <p className="text-white/80">
-                                        Windows 10/11 • 64 bits • ~8 Mo
-                                    </p>
+                        <div className="flex flex-col md:flex-row gap-12">
+                            {/* Colonne gauche : Instructions */}
+                            <div className="flex-1">
+                                <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                                    <Terminal className="w-6 h-6 text-emerald-500" />
+                                    Installation rapide
+                                </h2>
+
+                                <div className="space-y-8">
+                                    <div className="flex gap-4">
+                                        <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center font-bold flex-shrink-0">
+                                            1
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-medium mb-2">Copiez la commande</h3>
+                                            <p className="text-slate-400 text-sm">
+                                                Cette commande téléchargera et installera la dernière version de l&apos;agent.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-4">
+                                        <div className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center font-bold flex-shrink-0">
+                                            2
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-medium mb-2">Lancez l&apos;installation</h3>
+                                            <p className="text-slate-400 text-sm">
+                                                Collez la commande dans votre terminal (PowerShell ou Bash).
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-4">
+                                        <div className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center font-bold flex-shrink-0">
+                                            3
+                                        </div>
+                                        <div>
+                                            <h3 className="text-white font-medium mb-2">Connectez votre agent</h3>
+                                            <p className="text-slate-400 text-sm">
+                                                L&apos;agent vous demandera votre clé API disponible dans le dashboard.
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <ArrowRight className="w-8 h-8 text-white group-hover:translate-x-2 transition-transform" />
+
+                            {/* Colonne droite : Terminal */}
+                            <div className="flex-1">
+                                <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-2xl mb-6">
+                                    <div className="bg-slate-900 px-4 py-3 border-b border-slate-800 flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full bg-red-500/20" />
+                                        <div className="w-3 h-3 rounded-full bg-amber-500/20" />
+                                        <div className="w-3 h-3 rounded-full bg-emerald-500/20" />
+                                        <span className="ml-2 text-xs text-slate-500 font-mono">Terminal</span>
+                                    </div>
+                                    <div className="p-6 relative group">
+                                        <code className="text-emerald-400 font-mono text-sm break-all block min-h-[3rem]">
+                                            {getCommand()}
+                                        </code>
+
+                                        <button
+                                            onClick={handleCopy}
+                                            className="absolute top-4 right-4 p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors group-hover:opacity-100"
+                                        >
+                                            {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                                    <h4 className="text-emerald-400 font-medium mb-2 flex items-center gap-2">
+                                        <Download className="w-4 h-4" />
+                                        Liens directs
+                                    </h4>
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                            <a href="#" className="text-sm text-slate-400 hover:text-white transition-colors">
+                                                Installateur .exe (64-bit)
+                                            </a>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                            <a href="#" className="text-sm text-slate-400 hover:text-white transition-colors">
+                                                Package .pkg (Universal)
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    </a>
+                    </motion.div>
 
-                    {/* Mac & Linux - Secondaires */}
-                    <div className="grid md:grid-cols-2 gap-4">
-                        <a
-                            href="/downloads/mon-rempart-agent-mac-arm64"
-                            className="group bg-bleu-marine-clair border border-white/10 hover:border-vert-emeraude/50 p-6 rounded-xl transition-all"
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-bleu-marine rounded-lg flex items-center justify-center">
-                                    <Apple className="w-6 h-6 text-gray-400" />
-                                </div>
-                                <div>
-                                    <h3 className="text-white font-semibold">Mac (Apple Silicon)</h3>
-                                    <p className="text-gray-500 text-sm">M1, M2, M3...</p>
-                                </div>
-                            </div>
-                        </a>
-
-                        <a
-                            href="/downloads/mon-rempart-agent-mac-intel"
-                            className="group bg-bleu-marine-clair border border-white/10 hover:border-vert-emeraude/50 p-6 rounded-xl transition-all"
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-bleu-marine rounded-lg flex items-center justify-center">
-                                    <Apple className="w-6 h-6 text-gray-400" />
-                                </div>
-                                <div>
-                                    <h3 className="text-white font-semibold">Mac (Intel)</h3>
-                                    <p className="text-gray-500 text-sm">MacBook avant 2020</p>
-                                </div>
-                            </div>
-                        </a>
-
-                        <a
-                            href="/downloads/mon-rempart-agent-linux"
-                            className="group bg-bleu-marine-clair border border-white/10 hover:border-vert-emeraude/50 p-6 rounded-xl transition-all md:col-span-2"
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-bleu-marine rounded-lg flex items-center justify-center">
-                                    <Terminal className="w-6 h-6 text-gray-400" />
-                                </div>
-                                <div>
-                                    <h3 className="text-white font-semibold">Linux (x64)</h3>
-                                    <p className="text-gray-500 text-sm">Ubuntu, Debian, CentOS...</p>
-                                </div>
-                            </div>
-                        </a>
+                    {/* Footer Links */}
+                    <div className="text-center text-slate-500 text-sm">
+                        <Link href="/status" className="mx-3 hover:text-white transition-colors">État du service</Link> •
+                        <Link href="/docs" className="mx-3 hover:text-white transition-colors">Documentation</Link> •
+                        <Link href="/support" className="mx-3 hover:text-white transition-colors">Support</Link>
                     </div>
-                </div>
-
-                {/* Prérequis */}
-                <div className="mt-16 bg-bleu-marine-clair rounded-2xl border border-white/10 p-8">
-                    <h3 className="text-xl font-semibold text-white mb-6 flex items-center gap-3">
-                        <CheckCircle className="w-6 h-6 text-vert-emeraude" />
-                        Prérequis
-                    </h3>
-                    <ul className="space-y-4 text-gray-300">
-                        <li className="flex items-start gap-3">
-                            <div className="w-2 h-2 bg-vert-emeraude rounded-full mt-2" />
-                            <span>
-                                <strong className="text-white">Restic</strong> doit être installé sur la machine.{' '}
-                                <a href="https://restic.net/" target="_blank" rel="noopener noreferrer" className="text-vert-emeraude hover:underline">
-                                    Télécharger Restic →
-                                </a>
-                            </span>
-                        </li>
-                        <li className="flex items-start gap-3">
-                            <div className="w-2 h-2 bg-vert-emeraude rounded-full mt-2" />
-                            <span>
-                                <strong className="text-white">Connexion réseau</strong> pour communiquer avec le Dashboard.
-                            </span>
-                        </li>
-                        <li className="flex items-start gap-3">
-                            <div className="w-2 h-2 bg-vert-emeraude rounded-full mt-2" />
-                            <span>
-                                <strong className="text-white">Configuration S3</strong> doit être faite dans{' '}
-                                <Link href="/settings" className="text-vert-emeraude hover:underline">
-                                    les paramètres
-                                </Link>.
-                            </span>
-                        </li>
-                    </ul>
                 </div>
             </main>
-
-            {/* Footer */}
-            <footer className="border-t border-white/10 py-8 mt-16">
-                <div className="max-w-7xl mx-auto px-6 text-center text-gray-500 text-sm">
-                    © 2024 Mon Rempart - Solution de cybersécurité souveraine
-                </div>
-            </footer>
         </div>
     );
 }

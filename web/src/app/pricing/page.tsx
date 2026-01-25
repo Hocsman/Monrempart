@@ -1,16 +1,41 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Shield, CheckCircle, ArrowRight, Zap, Building2, Users, HelpCircle } from 'lucide-react';
+import { Shield, CheckCircle, ArrowRight, Zap, Building2, Users, HelpCircle, RefreshCw } from 'lucide-react';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+// Supabase client
+let supabaseInstance: SupabaseClient | null = null;
+
+function getSupabase(): SupabaseClient | null {
+    if (typeof window === 'undefined') return null;
+    if (!supabaseInstance) {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (url && key) {
+            supabaseInstance = createClient(url, key);
+        }
+    }
+    return supabaseInstance;
+}
+
+// Prix Stripe (à configurer dans .env)
+const STRIPE_PRICES = {
+    independant: process.env.NEXT_PUBLIC_STRIPE_PRICE_INDEPENDANT || 'price_independant',
+    serenite: process.env.NEXT_PUBLIC_STRIPE_PRICE_SERENITE || 'price_serenite',
+};
 
 const plans = [
     {
+        id: 'independant',
         name: 'Indépendant',
         price: '19',
         description: 'Pour les TPE et indépendants',
         icon: Users,
         color: 'blue',
+        priceId: STRIPE_PRICES.independant,
         features: [
             '3 postes maximum',
             '100 Go de stockage',
@@ -23,11 +48,13 @@ const plans = [
         popular: false,
     },
     {
+        id: 'serenite',
         name: 'Sérénité',
         price: '79',
         description: 'Pour les mairies et PME',
         icon: Building2,
         color: 'emerald',
+        priceId: STRIPE_PRICES.serenite,
         features: [
             'Postes illimités',
             '1 To de stockage',
@@ -63,6 +90,64 @@ const faqs = [
 ];
 
 export default function PricingPage() {
+    const [user, setUser] = useState<{ id: string; email: string } | null>(null);
+    const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+
+    useEffect(() => {
+        const loadUser = async () => {
+            const supabase = getSupabase();
+            if (!supabase) return;
+
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                setUser({ id: user.id, email: user.email || '' });
+            }
+        };
+
+        loadUser();
+    }, []);
+
+    const handleSubscribe = async (plan: typeof plans[0]) => {
+        // Si plan Sérénité, rediriger vers contact
+        if (plan.id === 'serenite') {
+            window.location.href = '/contact';
+            return;
+        }
+
+        // Si pas connecté, rediriger vers register
+        if (!user) {
+            window.location.href = '/auth/register';
+            return;
+        }
+
+        setLoadingPlan(plan.id);
+
+        try {
+            const response = await fetch('/api/stripe/checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    priceId: plan.priceId,
+                    userId: user.id,
+                    email: user.email,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.success && data.url) {
+                window.location.href = data.url;
+            } else {
+                alert(data.message || 'Erreur lors de la création de la session');
+            }
+        } catch (error) {
+            console.error('Erreur:', error);
+            alert('Erreur lors de la création de la session de paiement');
+        }
+
+        setLoadingPlan(null);
+    };
+
     return (
         <div className="min-h-screen bg-slate-950">
             {/* Navigation */}
@@ -77,9 +162,15 @@ export default function PricingPage() {
                         <Link href="/security" className="text-slate-400 hover:text-white transition-colors">Sécurité</Link>
                         <Link href="/pricing" className="text-emerald-400 font-medium">Tarifs</Link>
                     </div>
-                    <Link href="/auth/register" className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-full font-medium transition-all hover:scale-105">
-                        Essai gratuit
-                    </Link>
+                    {user ? (
+                        <Link href="/dashboard" className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-full font-medium transition-all hover:scale-105">
+                            Dashboard
+                        </Link>
+                    ) : (
+                        <Link href="/auth/register" className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-full font-medium transition-all hover:scale-105">
+                            Essai gratuit
+                        </Link>
+                    )}
                 </nav>
             </header>
 
@@ -144,16 +235,23 @@ export default function PricingPage() {
                                     ))}
                                 </ul>
 
-                                <Link
-                                    href={plan.popular ? '/contact' : '/auth/register'}
-                                    className={`w-full inline-flex items-center justify-center gap-2 py-4 rounded-xl font-semibold transition-all hover:scale-[1.02] ${plan.popular
-                                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                                            : 'bg-slate-700 hover:bg-slate-600 text-white'
+                                <button
+                                    onClick={() => handleSubscribe(plan)}
+                                    disabled={loadingPlan === plan.id}
+                                    className={`w-full inline-flex items-center justify-center gap-2 py-4 rounded-xl font-semibold transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed ${plan.popular
+                                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                                        : 'bg-slate-700 hover:bg-slate-600 text-white'
                                         }`}
                                 >
-                                    {plan.cta}
-                                    <ArrowRight className="w-5 h-5" />
-                                </Link>
+                                    {loadingPlan === plan.id ? (
+                                        <RefreshCw className="w-5 h-5 animate-spin" />
+                                    ) : (
+                                        <>
+                                            {plan.cta}
+                                            <ArrowRight className="w-5 h-5" />
+                                        </>
+                                    )}
+                                </button>
                             </motion.div>
                         ))}
                     </div>
@@ -181,19 +279,16 @@ export default function PricingPage() {
             </section>
 
             {/* FAQ */}
-            <section className="py-20 bg-slate-900/30">
+            <section className="py-16">
                 <div className="max-w-4xl mx-auto px-6">
-                    <motion.div
+                    <motion.h2
                         initial={{ opacity: 0, y: 20 }}
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true }}
-                        className="text-center mb-12"
+                        className="text-3xl font-bold text-white text-center mb-12"
                     >
-                        <h2 className="text-3xl font-bold text-white mb-4 flex items-center justify-center gap-3">
-                            <HelpCircle className="w-8 h-8 text-emerald-500" />
-                            Questions fréquentes
-                        </h2>
-                    </motion.div>
+                        Questions fréquentes
+                    </motion.h2>
 
                     <div className="space-y-4">
                         {faqs.map((faq, i) => (
@@ -205,38 +300,24 @@ export default function PricingPage() {
                                 transition={{ delay: i * 0.05 }}
                                 className="bg-slate-800/30 rounded-xl border border-slate-700/50 p-6"
                             >
-                                <h3 className="text-lg font-semibold text-white mb-2">{faq.question}</h3>
-                                <p className="text-slate-400">{faq.answer}</p>
+                                <div className="flex items-start gap-4">
+                                    <HelpCircle className="w-6 h-6 text-emerald-500 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-white mb-2">{faq.question}</h3>
+                                        <p className="text-slate-400">{faq.answer}</p>
+                                    </div>
+                                </div>
                             </motion.div>
                         ))}
                     </div>
                 </div>
             </section>
 
-            {/* CTA */}
-            <section className="py-20">
-                <div className="max-w-4xl mx-auto px-6 text-center">
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                    >
-                        <h2 className="text-3xl font-bold text-white mb-4">Prêt à sécuriser votre structure ?</h2>
-                        <p className="text-slate-400 mb-8">Commencez votre essai gratuit dès maintenant.</p>
-                        <Link
-                            href="/auth/register"
-                            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all hover:scale-105"
-                        >
-                            Démarrer l&apos;essai gratuit
-                            <ArrowRight className="w-5 h-5" />
-                        </Link>
-                    </motion.div>
-                </div>
-            </section>
-
             {/* Footer */}
-            <footer className="py-8 border-t border-slate-800/50 text-center text-slate-500 text-sm">
-                © 2024 Mon Rempart. Hébergé en France 🇫🇷
+            <footer className="py-12 border-t border-slate-800/50">
+                <div className="max-w-7xl mx-auto px-6 text-center text-slate-500">
+                    <p>© 2025 Mon Rempart. Tous droits réservés.</p>
+                </div>
             </footer>
         </div>
     );

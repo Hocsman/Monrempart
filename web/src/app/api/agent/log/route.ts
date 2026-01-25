@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { sendBackupFailedEmail } from '@/lib/resend';
 
 // Types pour les requêtes/réponses
 interface LogPayload {
@@ -173,6 +174,47 @@ export async function POST(request: NextRequest): Promise<NextResponse<LogRespon
                 });
 
             console.log(`📦 Backup log créé pour agent ${agentId}: ${body.status}`);
+
+            // Envoyer alerte email si backup échoué
+            if (body.status === 'failed') {
+                // Récupérer l'email de l'utilisateur propriétaire de l'agent
+                const { data: agentData } = await supabase
+                    .from('agents')
+                    .select('hostname, user_id')
+                    .eq('id', agentId)
+                    .single();
+
+                if (agentData?.user_id) {
+                    // Récupérer l'email depuis auth.users
+                    const { data: userData } = await supabase
+                        .from('auth.users')
+                        .select('email')
+                        .eq('id', agentData.user_id)
+                        .single();
+
+                    // Fallback: utiliser une requête directe si la table auth.users n'est pas accessible
+                    let userEmail = userData?.email;
+
+                    if (!userEmail) {
+                        // Essayer via la fonction RPC ou directement depuis subscriptions
+                        const { data: subData } = await supabase
+                            .rpc('get_user_email', { user_uuid: agentData.user_id })
+                            .single();
+                        userEmail = subData;
+                    }
+
+                    if (userEmail) {
+                        await sendBackupFailedEmail({
+                            to: userEmail,
+                            hostname: agentData.hostname || body.hostname || 'Agent inconnu',
+                            errorMessage: body.message || 'Erreur inconnue',
+                            agentId: agentId,
+                        });
+                    } else {
+                        console.log(`⚠️ Impossible d'envoyer l'alerte: email non trouvé pour user ${agentData.user_id}`);
+                    }
+                }
+            }
 
             return NextResponse.json({
                 success: true,

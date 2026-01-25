@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import {
     Shield, Download, BookOpen, RefreshCw, Settings, LogOut,
     Monitor, Clock, CheckCircle, AlertTriangle, XCircle,
-    HardDrive, FileText, Activity, ChevronRight, Plus, Pencil, X, Trash2, RotateCcw
+    HardDrive, FileText, Activity, ChevronRight, Plus, Pencil, X, Trash2, RotateCcw, CreditCard
 } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import StatsCharts from './components/StatsCharts';
@@ -354,6 +354,9 @@ export default function DashboardPage() {
                                 <RotateCcw className="w-5 h-5" />
                             </Link>
                             <NotificationBell />
+                            <Link href="/dashboard/billing" className="text-slate-400 hover:text-white transition-colors p-2" title="Facturation">
+                                <CreditCard className="w-5 h-5" />
+                            </Link>
                             <Link href="/settings" className="text-slate-400 hover:text-white transition-colors p-2">
                                 <Settings className="w-5 h-5" />
                             </Link>

@@ -468,7 +468,7 @@ export default function LandingPage() {
 
           <div className="border-t border-slate-800/50 mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-slate-500 text-sm">
-              © 2024 Mon Rempart. Tous droits réservés. Hébergé en France 🇫🇷
+              © 2026 Mon Rempart. Tous droits réservés. Hébergé en France 🇫🇷
             </p>
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4 text-amber-400" />

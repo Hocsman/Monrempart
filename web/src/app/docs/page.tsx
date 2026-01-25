@@ -333,7 +333,7 @@ export default function DocsPage() {
             </main>
 
             <footer className="py-8 border-t border-slate-800/50 text-center text-slate-500 text-sm">
-                © 2024 Mon Rempart. Hébergé en France 🇫🇷
+                © 2026 Mon Rempart. Hébergé en France 🇫🇷
             </footer>
         </div>
     );

@@ -115,4 +115,4 @@ Les binaires sont créés dans le dossier `dist/`.
 
 ## 📜 Licence
 
-Propriétaire - Mon Rempart © 2024
+Propriétaire - Mon Rempart © 2026

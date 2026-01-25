@@ -17,7 +17,7 @@ const incidents = [
         id: 1,
         title: 'Maintenance planifiée',
         status: 'resolved',
-        date: '20 Janvier 2024',
+        date: '20 Janvier 2026',
         description: 'Mise à jour des systèmes de sécurité. Aucune interruption de service constatée.'
     }
 ];

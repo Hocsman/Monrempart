@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
     Shield, ArrowLeft, User, Mail, Calendar, Key, Bell,
-    Save, RefreshCw, CheckCircle, AlertTriangle, Trash2, LogOut
+    Save, RefreshCw, CheckCircle, AlertTriangle, Trash2, Smartphone, Monitor, Clock, MapPin
 } from 'lucide-react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
@@ -46,6 +46,17 @@ export default function ProfilePage() {
 
     // Messages
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    // 2FA
+    const [twoFAEnabled, setTwoFAEnabled] = useState(false);
+    const [showQRCode, setShowQRCode] = useState(false);
+
+    // Sessions simulées
+    const sessions = [
+        { id: '1', device: 'Chrome sur MacOS', location: 'Paris, France', lastActive: 'Actuellement actif', current: true },
+        { id: '2', device: 'Safari sur iPhone', location: 'Paris, France', lastActive: 'Il y a 2 heures', current: false },
+        { id: '3', device: 'Firefox sur Windows', location: 'Lyon, France', lastActive: 'Il y a 3 jours', current: false },
+    ];
 
     // Delete account
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -147,7 +158,16 @@ export default function ProfilePage() {
     if (loading) {
         return (
             <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-                <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+                <div className="text-center">
+                    <motion.div
+                        animate={{ scale: [1, 1.1, 1] }}
+                        transition={{ duration: 1.5, repeat: Infinity }}
+                        className="w-16 h-16 mx-auto bg-emerald-500/10 rounded-xl flex items-center justify-center mb-4"
+                    >
+                        <User className="w-8 h-8 text-emerald-500" />
+                    </motion.div>
+                    <p className="text-slate-400 text-sm">Chargement du profil...</p>
+                </div>
             </div>
         );
     }
@@ -194,8 +214,8 @@ export default function ProfilePage() {
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         className={`mb-6 p-4 rounded-xl border flex items-center gap-3 ${message.type === 'success'
-                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                                : 'bg-red-500/10 border-red-500/30 text-red-400'
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                            : 'bg-red-500/10 border-red-500/30 text-red-400'
                             }`}
                     >
                         {message.type === 'success' ? (
@@ -339,6 +359,104 @@ export default function ProfilePage() {
                             )}
                             Sauvegarder les préférences
                         </button>
+                    </div>
+                </motion.div>
+
+                {/* 2FA - Authentification double facteur */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.25 }}
+                    className="bg-slate-800/30 border border-slate-700/50 rounded-2xl p-6 mb-6"
+                >
+                    <h2 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
+                        <Smartphone className="w-5 h-5 text-emerald-500" />
+                        Authentification double facteur (2FA)
+                    </h2>
+
+                    <div className="p-4 bg-slate-800/50 rounded-xl">
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <p className="text-white font-medium">Protection 2FA</p>
+                                <p className="text-slate-400 text-sm">Ajouter une couche de sécurité supplémentaire</p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    if (!twoFAEnabled) setShowQRCode(true);
+                                    setTwoFAEnabled(!twoFAEnabled);
+                                }}
+                                className={`relative w-14 h-8 rounded-full transition-colors ${twoFAEnabled ? 'bg-emerald-500' : 'bg-slate-600'
+                                    }`}
+                            >
+                                <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-transform ${twoFAEnabled ? 'left-7' : 'left-1'
+                                    }`} />
+                            </button>
+                        </div>
+
+                        {twoFAEnabled && (
+                            <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                                <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                                    <CheckCircle className="w-4 h-4" />
+                                    2FA activée - Votre compte est protégé
+                                </div>
+                            </div>
+                        )}
+
+                        {!twoFAEnabled && (
+                            <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                                <p className="text-amber-400 text-sm">
+                                    ⚠️ Nous recommandons fortement d&apos;activer la 2FA pour sécuriser votre compte.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </motion.div>
+
+                {/* Historique des connexions */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="bg-slate-800/30 border border-slate-700/50 rounded-2xl p-6 mb-6"
+                >
+                    <h2 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
+                        <Clock className="w-5 h-5 text-emerald-500" />
+                        Sessions actives
+                    </h2>
+
+                    <div className="space-y-3">
+                        {sessions.map((session) => (
+                            <div
+                                key={session.id}
+                                className={`p-4 rounded-xl flex items-center justify-between ${session.current ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-slate-800/50'
+                                    }`}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${session.current ? 'bg-emerald-500/20' : 'bg-slate-700'
+                                        }`}>
+                                        <Monitor className={`w-5 h-5 ${session.current ? 'text-emerald-400' : 'text-slate-400'
+                                            }`} />
+                                    </div>
+                                    <div>
+                                        <p className="text-white font-medium flex items-center gap-2">
+                                            {session.device}
+                                            {session.current && (
+                                                <span className="text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full">Actuelle</span>
+                                            )}
+                                        </p>
+                                        <p className="text-slate-400 text-sm flex items-center gap-2">
+                                            <MapPin className="w-3 h-3" />
+                                            {session.location} • {session.lastActive}
+                                        </p>
+                                    </div>
+                                </div>
+                                {!session.current && (
+                                    <button className="text-red-400 hover:text-red-300 text-sm">
+                                        Déconnecter
+                                    </button>
+                                )}
+                            </div>
+                        ))}
                     </div>
                 </motion.div>
 

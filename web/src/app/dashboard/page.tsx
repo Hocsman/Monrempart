@@ -381,7 +381,23 @@ export default function DashboardPage() {
                 <main className="max-w-7xl mx-auto px-6 py-8">
                     {loading ? (
                         <div className="flex items-center justify-center min-h-[60vh]">
-                            <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+                            <div className="text-center">
+                                <motion.div
+                                    animate={{ scale: [1, 1.1, 1] }}
+                                    transition={{ duration: 1.5, repeat: Infinity }}
+                                    className="w-16 h-16 mx-auto bg-emerald-500/10 rounded-xl flex items-center justify-center mb-4"
+                                >
+                                    <Shield className="w-8 h-8 text-emerald-500" />
+                                </motion.div>
+                                <div className="w-48 h-1 bg-slate-800 rounded-full overflow-hidden mb-3">
+                                    <motion.div
+                                        className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400"
+                                        animate={{ x: ['-100%', '100%'] }}
+                                        transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                                    />
+                                </div>
+                                <p className="text-slate-400 text-sm">Chargement du dashboard...</p>
+                            </div>
                         </div>
                     ) : agents.length === 0 ? (
                         <EmptyState />

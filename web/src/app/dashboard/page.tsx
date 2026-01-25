@@ -15,6 +15,10 @@ import { NotificationProvider } from './components/NotificationContext';
 import NotificationBell from './components/NotificationBell';
 import NotificationToast from './components/NotificationToast';
 import RealtimeNotifications from './components/RealtimeNotifications';
+import StorageBar from './components/StorageBar';
+import SummaryCard from './components/SummaryCard';
+import ExportButtons from './components/ExportButtons';
+import BackupCalendar from './components/BackupCalendar';
 
 // Supabase client (lazy initialization)
 let supabaseInstance: SupabaseClient | null = null;
@@ -420,6 +424,29 @@ export default function DashboardPage() {
 
                             {/* Graphiques de statistiques */}
                             <StatsCharts backupLogs={allLogs} agents={agents} />
+
+                            {/* Nouvelles sections améliorées */}
+                            <div className="grid lg:grid-cols-2 gap-6 mb-8">
+                                {/* Barre de stockage */}
+                                <StorageBar
+                                    usedBytes={allLogs.reduce((acc, log) => acc + (log.data_added || 0), 0)}
+                                    totalBytes={100 * 1024 * 1024 * 1024}
+                                    plan="independant"
+                                />
+
+                                {/* Carte synthèse */}
+                                <SummaryCard
+                                    lastBackup={logs[0] || null}
+                                    nextBackupTime="Dans ~1h"
+                                    totalBackups={allLogs.length}
+                                    successRate={allLogs.length > 0 ? (successfulBackups / allLogs.length) * 100 : 100}
+                                />
+                            </div>
+
+                            {/* Calendrier des backups */}
+                            <div className="mb-8">
+                                <BackupCalendar logs={allLogs} />
+                            </div>
 
                             {/* Agents */}
                             <section className="mb-8">
